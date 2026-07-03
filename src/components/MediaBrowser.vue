@@ -46,6 +46,11 @@
           <q-item-label>{{ file.name }}</q-item-label>
           <q-item-label caption>{{ formatBytes(file.sizeBytes) }}</q-item-label>
         </q-item-section>
+        <q-item-section v-if="isDownloaded(file)" side>
+          <q-icon name="offline_pin" color="positive">
+            <q-tooltip>Downloaded for offline</q-tooltip>
+          </q-icon>
+        </q-item-section>
       </q-item>
 
       <q-item v-if="isEmpty">
@@ -57,13 +62,36 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
-import { browseMedia, toBrowsePath, toWatchPath, type BrowseResult } from "@/services/media-api";
+import {
+  browseMedia,
+  getStreamUrl,
+  toBrowsePath,
+  toWatchPath,
+  type BrowseResult,
+  type MediaFileEntry
+} from "@/services/media-api";
+import { getDownloadedUrls } from "@/services/offline-video-status";
+import { onDownloadMessage } from "@/services/offline-video";
 
 const props = defineProps<{ path: string }>();
 
 const result = ref<BrowseResult | null>(null);
 const loading = ref(true);
 const error = ref("");
+const downloadedUrls = ref<Set<string>>(new Set());
+
+function isDownloaded(file: MediaFileEntry): boolean {
+  return downloadedUrls.value.has(getStreamUrl(file.path));
+}
+
+async function refreshDownloadedStatus(files: MediaFileEntry[]) {
+  downloadedUrls.value = await getDownloadedUrls(files.map((file) => getStreamUrl(file.path)));
+}
+
+const unsubscribeDownloads = onDownloadMessage((message) => {
+  if (message.type === "download-done") void refreshDownloadedStatus(result.value?.files ?? []);
+});
+onUnmounted(unsubscribeDownloads);
 
 const isOffline = ref(!navigator.onLine);
 const updateOnlineStatus = () => {
@@ -94,6 +122,7 @@ async function load(path: string) {
   error.value = "";
   try {
     result.value = await browseMedia(path);
+    void refreshDownloadedStatus(result.value.files);
   } catch (e) {
     error.value = isOffline.value
       ? "This folder hasn't been saved for offline browsing yet."
