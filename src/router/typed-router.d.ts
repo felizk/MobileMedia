@@ -37,8 +37,8 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       Record<never, never>,
       | '//(index)'
-      | '//offline-video-test'
-      | '//second'
+      | '//browse/[...path]'
+      | '//watch/[...path]'
     >,
     '//(index)': RouteRecordInfo<
       '//(index)',
@@ -47,18 +47,18 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '//offline-video-test': RouteRecordInfo<
-      '//offline-video-test',
-      '/offline-video-test',
-      Record<never, never>,
-      Record<never, never>,
+    '//browse/[...path]': RouteRecordInfo<
+      '//browse/[...path]',
+      '/browse/:path(.*)',
+      { path: ParamValue<true> },
+      { path: ParamValue<false> },
       | never
     >,
-    '//second': RouteRecordInfo<
-      '//second',
-      '/second',
-      Record<never, never>,
-      Record<never, never>,
+    '//watch/[...path]': RouteRecordInfo<
+      '//watch/[...path]',
+      '/watch/:path(.*)',
+      { path: ParamValue<true> },
+      { path: ParamValue<false> },
       | never
     >,
     '/[...path]': RouteRecordInfo<
@@ -85,8 +85,8 @@ declare module 'vue-router/auto-routes' {
       routes:
         | '/'
         | '//(index)'
-        | '//offline-video-test'
-        | '//second'
+        | '//browse/[...path]'
+        | '//watch/[...path]'
       views:
         | 'default'
       pathParamNames:
@@ -100,21 +100,21 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
-    'src/pages/index/offline-video-test.vue': {
+    'src/pages/index/browse/[...path].vue': {
       routes:
-        | '//offline-video-test'
+        | '//browse/[...path]'
       views:
         | never
       pathParamNames:
-        | never
+        | 'path'
     }
-    'src/pages/index/second.vue': {
+    'src/pages/index/watch/[...path].vue': {
       routes:
-        | '//second'
+        | '//watch/[...path]'
       views:
         | never
       pathParamNames:
-        | never
+        | 'path'
     }
     'src/pages/[...path].vue': {
       routes:
