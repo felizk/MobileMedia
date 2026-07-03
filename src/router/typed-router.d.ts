@@ -37,11 +37,19 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       Record<never, never>,
       | '//(index)'
+      | '//offline-video-test'
       | '//second'
     >,
     '//(index)': RouteRecordInfo<
       '//(index)',
       '/',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '//offline-video-test': RouteRecordInfo<
+      '//offline-video-test',
+      '/offline-video-test',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -77,6 +85,7 @@ declare module 'vue-router/auto-routes' {
       routes:
         | '/'
         | '//(index)'
+        | '//offline-video-test'
         | '//second'
       views:
         | 'default'
@@ -86,6 +95,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/index/(index).vue': {
       routes:
         | '//(index)'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/index/offline-video-test.vue': {
+      routes:
+        | '//offline-video-test'
       views:
         | never
       pathParamNames:
