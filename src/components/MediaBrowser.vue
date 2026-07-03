@@ -10,6 +10,10 @@
       />
     </q-breadcrumbs>
 
+    <q-banner v-if="isOffline" class="bg-warning text-white q-mb-md" rounded>
+      You're offline — showing the last saved listing for this folder, if any.
+    </q-banner>
+
     <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>
       {{ error }}
     </q-banner>
@@ -52,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { browseMedia, toBrowsePath, toWatchPath, type BrowseResult } from "@/services/media-api";
 
 const props = defineProps<{ path: string }>();
@@ -60,6 +64,17 @@ const props = defineProps<{ path: string }>();
 const result = ref<BrowseResult | null>(null);
 const loading = ref(true);
 const error = ref("");
+
+const isOffline = ref(!navigator.onLine);
+const updateOnlineStatus = () => {
+  isOffline.value = !navigator.onLine;
+};
+window.addEventListener("online", updateOnlineStatus);
+window.addEventListener("offline", updateOnlineStatus);
+onUnmounted(() => {
+  window.removeEventListener("online", updateOnlineStatus);
+  window.removeEventListener("offline", updateOnlineStatus);
+});
 
 const breadcrumbs = computed(() => {
   const segments = props.path.split("/").filter(Boolean);
@@ -80,7 +95,11 @@ async function load(path: string) {
   try {
     result.value = await browseMedia(path);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to load media.";
+    error.value = isOffline.value
+      ? "This folder hasn't been saved for offline browsing yet."
+      : e instanceof Error
+        ? e.message
+        : "Failed to load media.";
   } finally {
     loading.value = false;
   }

@@ -11,6 +11,10 @@ import {
   createHandlerBoundToURL,
   precacheAndRoute
 } from "workbox-precaching";
+import type { WorkboxPlugin } from "workbox-core";
+import { NetworkFirst } from "workbox-strategies";
+import { ExpirationPlugin } from "workbox-expiration";
+import { CacheableResponsePlugin } from "workbox-cacheable-response";
 
 import DownloadManager from "./offline-video/download-manager";
 import StorageManager from "./offline-video/storage-manager";
@@ -42,6 +46,47 @@ if (import.meta.env.QUASAR_PROD) {
     )
   );
 }
+
+// Media directory listings: prefer live data, but fall back to the last
+// listing seen for a given path when offline, so browsing (of previously
+// visited folders) still works without a connection.
+const MEDIA_BROWSE_CACHE = "media-browse";
+const MEDIA_BROWSE_ROOT_URL = "https://mmbe.felizk.net/api/media/browse/";
+
+registerRoute(
+  ({ url, request }) =>
+    request.method === "GET" &&
+    url.origin === "https://mmbe.felizk.net" &&
+    url.pathname.startsWith("/api/media/browse/"),
+  new NetworkFirst({
+    cacheName: MEDIA_BROWSE_CACHE,
+    networkTimeoutSeconds: 4,
+    // Workbox's plugin classes aren't typed cleanly under
+    // exactOptionalPropertyTypes; WorkboxPlugin is a structural interface,
+    // so this cast is just accommodating that upstream gap.
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [200] }) as WorkboxPlugin,
+      new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 7 * 24 * 60 * 60 }) as WorkboxPlugin
+    ]
+  })
+);
+
+// The page's very first browse request can race ahead of this service
+// worker taking control (clientsClaim() only kicks in once activation
+// completes), so the root listing wouldn't otherwise be cached until a
+// second visit. Warm it eagerly on install so "offline home" always works.
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    fetch(MEDIA_BROWSE_ROOT_URL)
+      .then((response) => {
+        if (response.ok) return caches.open(MEDIA_BROWSE_CACHE).then((cache) => cache.put(MEDIA_BROWSE_ROOT_URL, response));
+      })
+      .catch(() => {
+        // No network at install time — nothing to warm, the app just
+        // falls back to the normal "not saved offline" messaging.
+      })
+  );
+});
 
 // Offline video caching: serve fully-downloaded video/audio files from
 // IndexedDB (with Range support), falling back to the network otherwise.
