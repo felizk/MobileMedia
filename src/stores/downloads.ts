@@ -54,10 +54,25 @@ export const useDownloadsStore = defineStore("downloads", () => {
   const storageUsage = ref<number | null>(null);
   const storageQuota = ref<number | null>(null);
 
+  /**
+   * Whether the browser has granted persistent storage for this origin.
+   * When persisted, downloads survive storage-pressure and (on Safari)
+   * inactivity eviction — they can only be cleared by explicit user
+   * action. `null` while unknown or when the Storage API is unsupported.
+   */
+  const storagePersisted = ref<boolean | null>(null);
+  const storagePersistenceSupported =
+    typeof navigator !== "undefined" && !!navigator.storage?.persist;
+
   const storageAvailable = computed(() =>
     storageQuota.value != null && storageUsage.value != null
       ? Math.max(0, storageQuota.value - storageUsage.value)
       : null
+  );
+
+  /** True once we know persistence is available but not yet granted. */
+  const storageAtRisk = computed(
+    () => storagePersistenceSupported && storagePersisted.value === false
   );
 
   async function refreshStorageEstimate() {
@@ -68,6 +83,31 @@ export const useDownloadsStore = defineStore("downloads", () => {
       storageQuota.value = quota ?? null;
     } catch {
       // Leave the last known values in place.
+    }
+  }
+
+  async function refreshPersisted() {
+    if (!navigator.storage?.persisted) return;
+    try {
+      storagePersisted.value = await navigator.storage.persisted();
+    } catch {
+      // Leave the last known value in place.
+    }
+  }
+
+  /**
+   * Asks the browser to make this origin's storage persistent. Some
+   * browsers grant it silently via heuristics, others prompt the user.
+   * Returns the resulting persisted state.
+   */
+  async function requestPersistence(): Promise<boolean> {
+    if (!navigator.storage?.persist) return false;
+    try {
+      const granted = await navigator.storage.persist();
+      storagePersisted.value = granted;
+      return granted;
+    } catch {
+      return false;
     }
   }
 
@@ -227,6 +267,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
 
     onDownloadMessage(handleMessage);
     void refreshStorageEstimate();
+    void refreshPersisted();
     restoreQueue();
     void refreshDownloadedIds().then(() => {
       // Drop restored entries that actually finished before the reload.
@@ -253,7 +294,12 @@ export const useDownloadsStore = defineStore("downloads", () => {
     storageUsage,
     storageQuota,
     storageAvailable,
+    storagePersisted,
+    storagePersistenceSupported,
+    storageAtRisk,
     refreshStorageEstimate,
+    refreshPersisted,
+    requestPersistence,
     isDownloaded,
     itemFor,
     enqueue,
