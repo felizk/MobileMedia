@@ -1,5 +1,8 @@
 <template>
   <q-page class="q-pa-md">
+    <!-- Extra content above the browser, e.g. Continue Watching on Home. -->
+    <slot />
+
     <div class="row items-center q-mb-md">
       <q-breadcrumbs class="col">
         <q-breadcrumbs-el label="Home" icon="home" to="/" />

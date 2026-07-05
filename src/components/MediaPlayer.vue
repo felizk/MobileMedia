@@ -78,7 +78,14 @@ function onSeeked() {
 
 function onEnded() {
   clearInterval(saveTimer);
-  clearPlaybackPosition(props.positionKey);
+  // Reaching the end always counts, regardless of the 5s-streak gate: this
+  // clears the resume position and marks the video watched.
+  const video = videoEl.value;
+  if (video) {
+    savePlaybackPosition(props.positionKey, video.duration, video.duration);
+  } else {
+    clearPlaybackPosition(props.positionKey);
+  }
 }
 
 // --- Auto fullscreen on landscape ---------------------------------------
