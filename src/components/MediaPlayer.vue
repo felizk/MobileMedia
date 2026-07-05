@@ -10,6 +10,7 @@
     @pause="onPause"
     @seeked="onSeeked"
     @ended="onEnded"
+    autoplay
   />
 </template>
 
