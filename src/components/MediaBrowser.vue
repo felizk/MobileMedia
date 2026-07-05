@@ -19,8 +19,26 @@
         icon="bolt"
         :label="`Encode all (${encodableCount})`"
         :loading="encodingAll"
+        class="q-mr-sm"
         @click="encodeAll"
       />
+
+      <q-btn
+        flat
+        round
+        dense
+        icon="offline_pin"
+        :color="downloads.downloadedOnly ? 'positive' : 'grey'"
+        :disable="isOffline"
+        aria-label="Show downloaded only"
+        @click="downloads.toggleDownloadedOnly"
+      >
+        <q-tooltip>{{
+          downloads.downloadedOnly
+            ? "Showing downloaded only — tap to show everything"
+            : "Show downloaded only"
+        }}</q-tooltip>
+      </q-btn>
     </div>
 
     <q-banner v-if="isOffline" class="bg-warning text-white q-mb-md" rounded>
@@ -162,7 +180,7 @@
       <q-item v-if="isEmpty">
         <q-item-section class="text-grey">
           {{
-            isOffline
+            showDownloadedOnly
               ? "Nothing downloaded in this folder."
               : "This folder is empty."
           }}
@@ -248,10 +266,15 @@ function isPlayable(file: MediaFileEntry): boolean {
   );
 }
 
+// Forced while offline; a manual toggle the rest of the time.
+const showDownloadedOnly = computed(
+  () => isOffline.value || downloads.downloadedOnly
+);
+
 const visibleDirectories = computed(() => {
   const dirs = result.value?.directories ?? [];
-  if (!isOffline.value) return dirs;
-  // Offline: only folders that (transitively) contain a downloaded video.
+  if (!showDownloadedOnly.value) return dirs;
+  // Only folders that (transitively) contain a downloaded video.
   return dirs.filter(dir => {
     const prefix = `${dir.path}/`;
     for (const videoId of downloads.downloadedIds) {
@@ -263,7 +286,7 @@ const visibleDirectories = computed(() => {
 
 const visibleFiles = computed(() => {
   const files = result.value?.files ?? [];
-  if (!isOffline.value) return files;
+  if (!showDownloadedOnly.value) return files;
   return files.filter(file => isDownloaded(file));
 });
 

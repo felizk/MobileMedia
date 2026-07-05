@@ -11,6 +11,7 @@ import { getDownloadedVideos } from "@/services/offline-video-status";
 /** How many videos the service worker is asked to download at once. */
 const MAX_CONCURRENT_DOWNLOADS = 3;
 const QUEUE_STORAGE_KEY = "mm-download-queue";
+const DOWNLOADED_ONLY_STORAGE_KEY = "mm-downloaded-only";
 
 export type DownloadStatus = "queued" | "downloading" | "done" | "error";
 
@@ -43,6 +44,23 @@ export const useDownloadsStore = defineStore("downloads", () => {
   const items = ref(new Map<string, DownloadItem>());
   const downloadedIds = ref(new Set<string>());
   let initialized = false;
+
+  /** User preference: browse only downloaded videos, even while online. */
+  const downloadedOnly = ref(
+    localStorage.getItem(DOWNLOADED_ONLY_STORAGE_KEY) === "1"
+  );
+
+  function toggleDownloadedOnly() {
+    downloadedOnly.value = !downloadedOnly.value;
+    try {
+      localStorage.setItem(
+        DOWNLOADED_ONLY_STORAGE_KEY,
+        downloadedOnly.value ? "1" : "0"
+      );
+    } catch {
+      // Preference just won't survive a reload.
+    }
+  }
 
   const downloadingCount = computed(
     () =>
@@ -198,6 +216,8 @@ export const useDownloadsStore = defineStore("downloads", () => {
   return {
     items,
     downloadedIds,
+    downloadedOnly,
+    toggleDownloadedOnly,
     downloadingCount,
     queuedCount,
     activeCount,
