@@ -15,7 +15,7 @@
 </template>
 
 <script setup lang="ts">
-import { onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import {
   clearPlaybackPosition,
   getPlaybackPosition,
@@ -81,8 +81,51 @@ function onEnded() {
   clearPlaybackPosition(props.positionKey);
 }
 
+// --- Auto fullscreen on landscape ---------------------------------------
+// On touch devices, rotating into landscape enters fullscreen and rotating
+// back to portrait exits it. Fullscreen requests can be blocked when they
+// aren't tied to a user gesture, so every attempt is best-effort.
+const isTouch =
+  typeof window !== "undefined" &&
+  window.matchMedia("(pointer: coarse)").matches;
+const landscapeQuery =
+  typeof window !== "undefined"
+    ? window.matchMedia("(orientation: landscape)")
+    : null;
+
+type FullscreenVideo = HTMLVideoElement & {
+  webkitEnterFullscreen?: () => void;
+};
+
+async function syncFullscreen(landscape: boolean) {
+  const video = videoEl.value as FullscreenVideo | null;
+  if (!video) return;
+  try {
+    if (landscape) {
+      if (document.fullscreenElement) return;
+      if (video.requestFullscreen) await video.requestFullscreen();
+      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+    } else if (document.fullscreenElement && document.exitFullscreen) {
+      await document.exitFullscreen();
+    }
+  } catch {
+    // Blocked (e.g. no user gesture) or unsupported — ignore, it's best-effort.
+  }
+}
+
+function onOrientationChange(e: MediaQueryListEvent) {
+  void syncFullscreen(e.matches);
+}
+
+onMounted(() => {
+  if (!isTouch || !landscapeQuery) return;
+  landscapeQuery.addEventListener("change", onOrientationChange);
+  if (landscapeQuery.matches) void syncFullscreen(true);
+});
+
 onUnmounted(() => {
   clearInterval(saveTimer);
   savePosition();
+  landscapeQuery?.removeEventListener("change", onOrientationChange);
 });
 </script>
