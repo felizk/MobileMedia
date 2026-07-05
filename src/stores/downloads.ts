@@ -2,6 +2,7 @@ import { acceptHMRUpdate, defineStore } from "pinia";
 import { computed, ref } from "vue";
 import {
   onDownloadMessage,
+  requestVideoCancel,
   requestVideoDelete,
   requestVideoDownload,
   type OfflineVideoMessage
@@ -201,6 +202,52 @@ export const useDownloadsStore = defineStore("downloads", () => {
     void requestVideoDelete(videoId);
   }
 
+  /**
+   * Cancels a queued, in-progress, or failed download and purges any partial
+   * bytes it left behind, then starts the next queued item. Use this rather
+   * than `deleteDownload` for anything that isn't a completed download.
+   */
+  function cancelDownload(videoId: string) {
+    items.value.delete(videoId);
+    persistQueue();
+    void requestVideoCancel(videoId);
+    pump();
+  }
+
+  /** Re-queues a failed download so it resumes from its stored bytes. */
+  function retry(videoId: string) {
+    const item = items.value.get(videoId);
+    if (!item || item.status !== "error") return;
+    item.status = "queued";
+    item.progress = null;
+    delete item.error;
+    pump();
+  }
+
+  /**
+   * Removes finished (done) and failed entries from the queue list. Completed
+   * downloads stay on the device; failed ones have their partial bytes purged
+   * so nothing half-downloaded is left behind.
+   */
+  function clearFinished() {
+    for (const [videoId, item] of items.value) {
+      if (item.status === "done") {
+        items.value.delete(videoId);
+      } else if (item.status === "error") {
+        items.value.delete(videoId);
+        void requestVideoCancel(videoId);
+      }
+    }
+    persistQueue();
+  }
+
+  const finishedCount = computed(
+    () =>
+      [...items.value.values()].filter(
+        item => item.status === "done" || item.status === "error"
+      ).length
+  );
+
   function handleMessage(message: OfflineVideoMessage) {
     const item = items.value.get(message.videoId);
 
@@ -230,6 +277,14 @@ export const useDownloadsStore = defineStore("downloads", () => {
         break;
       case "delete-error":
         // The video may still be on disk; re-scan so the UI stays truthful.
+        void refreshDownloadedIds();
+        break;
+      case "cancel-done":
+        downloadedIds.value.delete(message.videoId);
+        void refreshStorageEstimate();
+        break;
+      case "cancel-error":
+        // Purge may have partially failed; re-scan so the UI stays truthful.
         void refreshDownloadedIds();
         break;
     }
@@ -291,6 +346,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
     downloadingCount,
     queuedCount,
     activeCount,
+    finishedCount,
     storageUsage,
     storageQuota,
     storageAvailable,
@@ -304,6 +360,9 @@ export const useDownloadsStore = defineStore("downloads", () => {
     itemFor,
     enqueue,
     deleteDownload,
+    cancelDownload,
+    retry,
+    clearFinished,
     refreshDownloadedIds,
     init
   };

@@ -15,6 +15,7 @@ export default class StorageManager {
   ondone: () => void = () => {};
 
   private cancelled = false;
+  private readonly pendingWrites = new Set<Promise<void>>();
 
   constructor(private readonly videoId: string) {}
 
@@ -23,11 +24,31 @@ export default class StorageManager {
   }
 
   /**
+   * Resolves once every write dispatched so far has settled. Callers that
+   * cancel a download await this before purging the video, so no in-flight
+   * write can land after the purge and resurrect partial data.
+   */
+  async settled(): Promise<void> {
+    await Promise.allSettled(this.pendingWrites);
+  }
+
+  /**
    * Persists a downloaded chunk plus its updated file/video meta.
    *
    * When `isDone` is true, invokes `ondone` once all writes complete.
    */
-  async storeChunk(
+  storeChunk(
+    fileMeta: FileMeta,
+    fileChunk: FileChunk,
+    isDone: boolean
+  ): Promise<void> {
+    const write = this.doStoreChunk(fileMeta, fileChunk, isDone);
+    this.pendingWrites.add(write);
+    void write.catch(() => {}).finally(() => this.pendingWrites.delete(write));
+    return write;
+  }
+
+  private async doStoreChunk(
     fileMeta: FileMeta,
     fileChunk: FileChunk,
     isDone: boolean

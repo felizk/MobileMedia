@@ -19,6 +19,8 @@ type FlushHandler = (
  */
 export default class DownloadManager {
   private paused = false;
+  private cancelled = false;
+  private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private readonly buffer: FixedBuffer;
   private readonly flushHandlers: FlushHandler[] = [];
   private fileMeta: FileMeta | null = null;
@@ -38,6 +40,21 @@ export default class DownloadManager {
 
   pause(): void {
     this.paused = true;
+  }
+
+  /**
+   * Aborts the download for good. Unlike `pause()`, the currently buffered
+   * bytes are discarded rather than flushed, so `run()` resolves without
+   * writing a partial chunk — the caller is expected to purge whatever was
+   * already stored. Cancelling the reader releases the network stream and
+   * unblocks the pending `read()` so the download loop unwinds promptly.
+   */
+  cancel(): void {
+    this.cancelled = true;
+    this.paused = true;
+    void this.reader?.cancel().catch(() => {
+      // The stream may already be closed/errored; nothing to clean up.
+    });
   }
 
   /** Resolves any existing (possibly partial) download progress from IDB. */
@@ -77,6 +94,7 @@ export default class DownloadManager {
     }
 
     const reader = response.body.getReader();
+    this.reader = reader;
     const contentRange = response.headers.get("Content-Range");
     const fileLength = contentRange
       ? Number(contentRange.split("/")[1])
@@ -97,6 +115,10 @@ export default class DownloadManager {
       // eslint-disable-next-line no-await-in-loop
       chunk = await reader.read();
     }
+
+    // A cancelled download discards its in-flight buffer instead of writing
+    // a trailing partial chunk — the caller purges the partial file entirely.
+    if (this.cancelled) return;
 
     this.buffer.flush(chunk.done ? { done: true } : {});
   }

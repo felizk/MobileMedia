@@ -108,9 +108,27 @@ self.addEventListener("fetch", event => {
   );
 });
 
+/**
+ * In-flight downloads, keyed by videoId, so a `cancel-video` message can
+ * stop the manager pair for a running download. The server's queue is the
+ * page's concern; this only tracks work actually executing in the worker.
+ */
+interface ActiveDownload {
+  downloadManager: DownloadManager;
+  storageManager: StorageManager;
+  /** Resolves once `run()` has fully settled (never rejects). */
+  finished: Promise<void>;
+}
+const activeDownloads = new Map<string, ActiveDownload>();
+
 self.addEventListener("message", event => {
   const data = event.data as ClientMessage;
-  if (data?.type !== "download-video" && data?.type !== "delete-video") return;
+  if (
+    data?.type !== "download-video" &&
+    data?.type !== "delete-video" &&
+    data?.type !== "cancel-video"
+  )
+    return;
 
   const client = event.source;
   const postToClient = (message: WorkerMessage) => {
@@ -128,6 +146,35 @@ self.addEventListener("message", event => {
         const message =
           error instanceof Error ? error.message : "Unknown delete error.";
         postToClient({ type: "delete-error", videoId: data.videoId, message });
+      })
+    );
+    return;
+  }
+
+  if (data.type === "cancel-video") {
+    event.waitUntil(
+      (async () => {
+        const active = activeDownloads.get(data.videoId);
+        if (active) {
+          // Stop new writes first, then unwind the read loop, then wait for
+          // any already-dispatched write to land — only after all of that is
+          // it safe to purge, or an in-flight chunk could be re-persisted.
+          active.storageManager.cancel();
+          active.downloadManager.cancel();
+          activeDownloads.delete(data.videoId);
+          await active.finished;
+          await active.storageManager.settled();
+        }
+        // Purge whatever partial bytes the download (or a prior failed one)
+        // left behind, so nothing half-downloaded remains.
+        const db = await getIDBConnection();
+        const files = await db.file.getByVideoId(data.videoId);
+        await db.removeVideo(data.videoId, files);
+        postToClient({ type: "cancel-done", videoId: data.videoId });
+      })().catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Unknown cancel error.";
+        postToClient({ type: "cancel-error", videoId: data.videoId, message });
       })
     );
     return;
@@ -158,11 +205,31 @@ self.addEventListener("message", event => {
     void storageManager.storeChunk(fileMeta, fileChunk, isDone);
   });
 
-  event.waitUntil(
-    downloadManager.run().catch((error: unknown) => {
+  const finished = downloadManager
+    .run()
+    .catch((error: unknown) => {
+      // A cancelled download resolves cleanly, so reaching here is a real
+      // failure. Suppress it once cancel has taken this entry over.
+      if (
+        activeDownloads.get(data.videoId)?.downloadManager !== downloadManager
+      )
+        return;
       const message =
         error instanceof Error ? error.message : "Unknown download error.";
       postToClient({ type: "download-error", videoId: data.videoId, message });
     })
-  );
+    .finally(() => {
+      // Leave the entry in place if a newer download has already replaced it.
+      if (
+        activeDownloads.get(data.videoId)?.downloadManager === downloadManager
+      )
+        activeDownloads.delete(data.videoId);
+    });
+
+  activeDownloads.set(data.videoId, {
+    downloadManager,
+    storageManager,
+    finished
+  });
+  event.waitUntil(finished);
 });

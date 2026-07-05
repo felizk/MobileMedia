@@ -51,11 +51,26 @@ export interface DeleteVideoMessage {
   videoId: string;
 }
 
-export type ClientMessage = DownloadVideoMessage | DeleteVideoMessage;
+/**
+ * Message sent from a page to the service worker to cancel an in-progress
+ * (or previously failed) download and purge any partial bytes, so nothing
+ * half-downloaded is left behind in offline storage.
+ */
+export interface CancelVideoMessage {
+  type: "cancel-video";
+  videoId: string;
+}
+
+export type ClientMessage =
+  | DownloadVideoMessage
+  | DeleteVideoMessage
+  | CancelVideoMessage;
 
 export type WorkerMessage =
   | { type: "download-progress"; videoId: string; progress: number }
   | { type: "download-done"; videoId: string }
   | { type: "download-error"; videoId: string; message: string }
   | { type: "delete-done"; videoId: string }
-  | { type: "delete-error"; videoId: string; message: string };
+  | { type: "delete-error"; videoId: string; message: string }
+  | { type: "cancel-done"; videoId: string }
+  | { type: "cancel-error"; videoId: string; message: string };

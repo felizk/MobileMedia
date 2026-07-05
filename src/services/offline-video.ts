@@ -26,12 +26,25 @@ export interface DeleteErrorMessage {
   message: string;
 }
 
+export interface CancelDoneMessage {
+  type: "cancel-done";
+  videoId: string;
+}
+
+export interface CancelErrorMessage {
+  type: "cancel-error";
+  videoId: string;
+  message: string;
+}
+
 export type OfflineVideoMessage =
   | DownloadProgressMessage
   | DownloadDoneMessage
   | DownloadErrorMessage
   | DeleteDoneMessage
-  | DeleteErrorMessage;
+  | DeleteErrorMessage
+  | CancelDoneMessage
+  | CancelErrorMessage;
 
 /** Asks the service worker to download a video (by its stream URL) for offline playback. */
 export async function requestVideoDownload(
@@ -46,6 +59,15 @@ export async function requestVideoDownload(
 export async function requestVideoDelete(videoId: string): Promise<void> {
   const registration = await navigator.serviceWorker.ready;
   registration.active?.postMessage({ type: "delete-video", videoId });
+}
+
+/**
+ * Asks the service worker to cancel an in-progress (or previously failed)
+ * download and purge any partial bytes it left behind.
+ */
+export async function requestVideoCancel(videoId: string): Promise<void> {
+  const registration = await navigator.serviceWorker.ready;
+  registration.active?.postMessage({ type: "cancel-video", videoId });
 }
 
 /** Subscribes to download progress/done/error events from the service worker. Returns an unsubscribe function. */

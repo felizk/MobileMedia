@@ -11,6 +11,20 @@
           flat
           round
           dense
+          icon="download"
+          to="/downloads"
+          aria-label="Download queue"
+        >
+          <q-badge v-if="downloads.activeCount" color="green" floating>
+            {{ downloads.activeCount }}
+          </q-badge>
+          <q-tooltip>Download queue</q-tooltip>
+        </q-btn>
+
+        <q-btn
+          flat
+          round
+          dense
           icon="video_settings"
           to="/encodes"
           aria-label="Encode queue"

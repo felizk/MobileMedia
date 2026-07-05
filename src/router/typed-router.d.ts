@@ -38,6 +38,7 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | '//(index)'
       | '//browse/[...path]'
+      | '//downloads'
       | '//encodes'
       | '//storage'
       | '//watch/[...path]'
@@ -54,6 +55,13 @@ declare module 'vue-router/auto-routes' {
       '/browse/:path(.*)',
       { path: ParamValue<true> },
       { path: ParamValue<false> },
+      | never
+    >,
+    '//downloads': RouteRecordInfo<
+      '//downloads',
+      '/downloads',
+      Record<never, never>,
+      Record<never, never>,
       | never
     >,
     '//encodes': RouteRecordInfo<
@@ -102,6 +110,7 @@ declare module 'vue-router/auto-routes' {
         | '/'
         | '//(index)'
         | '//browse/[...path]'
+        | '//downloads'
         | '//encodes'
         | '//storage'
         | '//watch/[...path]'
@@ -125,6 +134,14 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'path'
+    }
+    'src/pages/index/downloads.vue': {
+      routes:
+        | '//downloads'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
     'src/pages/index/encodes.vue': {
       routes:
