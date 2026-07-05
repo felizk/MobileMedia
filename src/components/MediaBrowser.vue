@@ -190,6 +190,15 @@
   </q-page>
 </template>
 
+<script lang="ts">
+import type { BrowseResult } from "@/services/media-api";
+
+// Session-wide listing cache, shared across MediaBrowser instances, so
+// returning to a folder renders instantly instead of collapsing into a
+// loading bar (which would defeat the router's scroll restoration).
+const browseCache = new Map<string, BrowseResult>();
+</script>
+
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue";
 import {
@@ -197,7 +206,6 @@ import {
   getStreamUrl,
   toBrowsePath,
   toWatchPath,
-  type BrowseResult,
   type EncodeStatus,
   type MediaFileEntry
 } from "@/services/media-api";
@@ -357,18 +365,31 @@ function deleteFile(file: MediaFileEntry) {
 }
 
 async function load(path: string) {
-  loading.value = true;
+  const cached = browseCache.get(path);
   error.value = "";
+  if (cached) {
+    // Render the last listing synchronously so returning to a folder is
+    // instant and the router can restore the scroll position onto a list
+    // that already has its full height — then revalidate in the background.
+    result.value = cached;
+    loading.value = false;
+  } else {
+    loading.value = true;
+  }
+
   try {
-    result.value = await browseMedia(path);
+    const fresh = await browseMedia(path);
+    browseCache.set(path, fresh);
+    if (props.path === path) result.value = fresh;
   } catch (e) {
+    if (props.path !== path || cached) return; // keep showing the cached listing
     error.value = isOffline.value
       ? "This folder hasn't been saved for offline browsing yet."
       : e instanceof Error
         ? e.message
         : "Failed to load media.";
   } finally {
-    loading.value = false;
+    if (props.path === path) loading.value = false;
   }
 }
 
