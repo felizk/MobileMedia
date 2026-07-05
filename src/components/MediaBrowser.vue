@@ -1,28 +1,46 @@
 <template>
   <q-page class="q-pa-md">
-    <q-breadcrumbs class="q-mb-md">
-      <q-breadcrumbs-el label="Home" icon="home" to="/" />
-      <q-breadcrumbs-el
-        v-for="crumb in breadcrumbs"
-        :key="crumb.path"
-        :label="crumb.name"
-        :to="toBrowsePath(crumb.path)"
+    <div class="row items-center q-mb-md">
+      <q-breadcrumbs class="col">
+        <q-breadcrumbs-el label="Home" icon="home" to="/" />
+        <q-breadcrumbs-el
+          v-for="crumb in breadcrumbs"
+          :key="crumb.path"
+          :label="crumb.name"
+          :to="toBrowsePath(crumb.path)"
+        />
+      </q-breadcrumbs>
+
+      <q-btn
+        v-if="!isOffline && encodableCount > 0"
+        dense
+        no-caps
+        color="primary"
+        icon="bolt"
+        :label="`Encode all (${encodableCount})`"
+        :loading="encodingAll"
+        @click="encodeAll"
       />
-    </q-breadcrumbs>
+    </div>
 
     <q-banner v-if="isOffline" class="bg-warning text-white q-mb-md" rounded>
-      You're offline — showing the last saved listing for this folder, if any.
+      You're offline — showing only videos downloaded to this device.
     </q-banner>
 
     <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>
       {{ error }}
     </q-banner>
 
-    <q-linear-progress v-else-if="loading" indeterminate color="primary" class="q-mb-md" />
+    <q-linear-progress
+      v-else-if="loading"
+      indeterminate
+      color="primary"
+      class="q-mb-md"
+    />
 
     <q-list v-else bordered separator>
       <q-item
-        v-for="dir in result?.directories ?? []"
+        v-for="dir in visibleDirectories"
         :key="dir.path"
         clickable
         :to="toBrowsePath(dir.path)"
@@ -34,27 +52,121 @@
       </q-item>
 
       <q-item
-        v-for="file in result?.files ?? []"
+        v-for="file in visibleFiles"
         :key="file.path"
-        clickable
-        :to="toWatchPath(file.path)"
+        :clickable="isPlayable(file)"
+        :to="isPlayable(file) ? toWatchPath(file.path) : undefined"
       >
         <q-item-section avatar>
-          <q-icon name="movie" color="secondary" />
+          <q-icon
+            name="movie"
+            :color="isPlayable(file) ? 'secondary' : 'grey-5'"
+          />
         </q-item-section>
+
         <q-item-section>
-          <q-item-label>{{ file.name }}</q-item-label>
-          <q-item-label caption>{{ formatBytes(file.sizeBytes) }}</q-item-label>
+          <q-item-label :class="{ 'text-grey-6': !isPlayable(file) }">{{
+            file.name
+          }}</q-item-label>
+          <q-item-label caption>{{ fileCaption(file) }}</q-item-label>
         </q-item-section>
-        <q-item-section v-if="isDownloaded(file)" side>
-          <q-icon name="offline_pin" color="positive">
-            <q-tooltip>Downloaded for offline</q-tooltip>
-          </q-icon>
+
+        <q-item-section side>
+          <div class="row items-center q-gutter-xs no-wrap">
+            <!-- Encode state -->
+            <template v-if="statusOf(file) === 'Encoding'">
+              <q-badge color="orange" outline>{{
+                encodingLabel(file)
+              }}</q-badge>
+            </template>
+            <q-btn
+              v-else-if="statusOf(file) === 'NotEncoded' && !isOffline"
+              dense
+              no-caps
+              outline
+              color="primary"
+              icon="bolt"
+              label="Encode"
+              :loading="pendingEncodes.has(file.path)"
+              @click.stop.prevent="encodeFile(file)"
+            />
+
+            <!-- Download state -->
+            <template v-if="downloadItemOf(file)?.status === 'downloading'">
+              <q-circular-progress
+                :value="(downloadItemOf(file)?.progress ?? 0) * 100"
+                :indeterminate="downloadItemOf(file)?.progress == null"
+                show-value
+                size="32px"
+                color="primary"
+                track-color="grey-4"
+              >
+                <span class="text-caption">{{
+                  Math.round((downloadItemOf(file)?.progress ?? 0) * 100)
+                }}</span>
+              </q-circular-progress>
+            </template>
+            <q-icon
+              v-else-if="downloadItemOf(file)?.status === 'queued'"
+              name="downloading"
+              color="grey"
+              size="24px"
+            >
+              <q-tooltip>Waiting in download queue</q-tooltip>
+            </q-icon>
+            <q-btn
+              v-else-if="downloadItemOf(file)?.status === 'error'"
+              dense
+              round
+              flat
+              icon="sync_problem"
+              color="negative"
+              @click.stop.prevent="downloadFile(file)"
+            >
+              <q-tooltip
+                >{{ downloadItemOf(file)?.error }} — tap to retry</q-tooltip
+              >
+            </q-btn>
+            <template v-else-if="isDownloaded(file)">
+              <q-icon name="offline_pin" color="positive" size="24px">
+                <q-tooltip>Downloaded for offline</q-tooltip>
+              </q-icon>
+              <q-btn
+                dense
+                round
+                flat
+                icon="delete"
+                color="negative"
+                aria-label="Delete download"
+                @click.stop.prevent="deleteFile(file)"
+              >
+                <q-tooltip>Delete from device</q-tooltip>
+              </q-btn>
+            </template>
+            <q-btn
+              v-else-if="statusOf(file) === 'Encoded' && !isOffline"
+              dense
+              round
+              flat
+              icon="download"
+              color="primary"
+              aria-label="Download for offline"
+              @click.stop.prevent="downloadFile(file)"
+            >
+              <q-tooltip>Download for offline</q-tooltip>
+            </q-btn>
+          </div>
         </q-item-section>
       </q-item>
 
       <q-item v-if="isEmpty">
-        <q-item-section class="text-grey">This folder is empty.</q-item-section>
+        <q-item-section class="text-grey">
+          {{
+            isOffline
+              ? "Nothing downloaded in this folder."
+              : "This folder is empty."
+          }}
+        </q-item-section>
       </q-item>
     </q-list>
   </q-page>
@@ -68,30 +180,22 @@ import {
   toBrowsePath,
   toWatchPath,
   type BrowseResult,
+  type EncodeStatus,
   type MediaFileEntry
 } from "@/services/media-api";
-import { getDownloadedUrls } from "@/services/offline-video-status";
-import { onDownloadMessage } from "@/services/offline-video";
+import { useDownloadsStore, type DownloadItem } from "@/stores/downloads";
+import { useEncodesStore } from "@/stores/encodes";
 
 const props = defineProps<{ path: string }>();
+
+const downloads = useDownloadsStore();
+const encodes = useEncodesStore();
 
 const result = ref<BrowseResult | null>(null);
 const loading = ref(true);
 const error = ref("");
-const downloadedUrls = ref<Set<string>>(new Set());
-
-function isDownloaded(file: MediaFileEntry): boolean {
-  return downloadedUrls.value.has(getStreamUrl(file.path));
-}
-
-async function refreshDownloadedStatus(files: MediaFileEntry[]) {
-  downloadedUrls.value = await getDownloadedUrls(files.map((file) => getStreamUrl(file.path)));
-}
-
-const unsubscribeDownloads = onDownloadMessage((message) => {
-  if (message.type === "download-done") void refreshDownloadedStatus(result.value?.files ?? []);
-});
-onUnmounted(unsubscribeDownloads);
+const pendingEncodes = ref(new Set<string>());
+const encodingAll = ref(false);
 
 const isOffline = ref(!navigator.onLine);
 const updateOnlineStatus = () => {
@@ -107,22 +211,133 @@ onUnmounted(() => {
 const breadcrumbs = computed(() => {
   const segments = props.path.split("/").filter(Boolean);
   let cumulative = "";
-  return segments.map((name) => {
+  return segments.map(name => {
     cumulative = cumulative ? `${cumulative}/${name}` : name;
     return { name, path: cumulative };
   });
 });
 
-const isEmpty = computed(
-  () => (result.value?.directories.length ?? 0) === 0 && (result.value?.files.length ?? 0) === 0
+/**
+ * The listing's `encodeStatus` overlaid with live queue state, so a file
+ * flips to "Encoding" the moment it's queued and to "Encoded" the moment
+ * its job completes — without re-fetching the directory.
+ */
+function statusOf(file: MediaFileEntry): EncodeStatus {
+  const job = encodes.jobBySourcePath.get(file.path);
+  if (job) {
+    if (job.status === "Completed") return "Encoded";
+    if (job.status === "Queued" || job.status === "Running") return "Encoding";
+    // Failed/Canceled: the listing's "Encoding" (if any) referred to this
+    // same job, so only trust a static "Encoded".
+    return file.encodeStatus === "Encoded" ? "Encoded" : "NotEncoded";
+  }
+  return file.encodeStatus ?? "NotEncoded";
+}
+
+function isDownloaded(file: MediaFileEntry): boolean {
+  return downloads.isDownloaded(file.path);
+}
+
+function downloadItemOf(file: MediaFileEntry): DownloadItem | undefined {
+  return downloads.itemFor(file.path);
+}
+
+function isPlayable(file: MediaFileEntry): boolean {
+  return (
+    isDownloaded(file) || (!isOffline.value && statusOf(file) === "Encoded")
+  );
+}
+
+const visibleDirectories = computed(() => {
+  const dirs = result.value?.directories ?? [];
+  if (!isOffline.value) return dirs;
+  // Offline: only folders that (transitively) contain a downloaded video.
+  return dirs.filter(dir => {
+    const prefix = `${dir.path}/`;
+    for (const videoId of downloads.downloadedIds) {
+      if (videoId.startsWith(prefix)) return true;
+    }
+    return false;
+  });
+});
+
+const visibleFiles = computed(() => {
+  const files = result.value?.files ?? [];
+  if (!isOffline.value) return files;
+  return files.filter(file => isDownloaded(file));
+});
+
+const encodableCount = computed(
+  () =>
+    visibleFiles.value.filter(file => statusOf(file) === "NotEncoded").length
 );
+
+const isEmpty = computed(
+  () => visibleDirectories.value.length === 0 && visibleFiles.value.length === 0
+);
+
+function encodingLabel(file: MediaFileEntry): string {
+  const job = encodes.jobBySourcePath.get(file.path);
+  if (job?.status === "Running" && job.progress != null) {
+    return `Encoding ${Math.round(job.progress * 100)}%`;
+  }
+  return job?.status === "Running" ? "Encoding" : "Encode queued";
+}
+
+function fileCaption(file: MediaFileEntry): string {
+  const parts = [formatBytes(file.sizeBytes)];
+  if (statusOf(file) === "NotEncoded") parts.push("Not encoded");
+  const download = downloadItemOf(file);
+  if (download?.status === "queued") parts.push("Download queued");
+  else if (download?.status === "downloading") parts.push("Downloading…");
+  else if (download?.status === "error") parts.push("Download failed");
+  return parts.join(" · ");
+}
+
+async function encodeFile(file: MediaFileEntry) {
+  pendingEncodes.value.add(file.path);
+  error.value = "";
+  try {
+    await encodes.enqueueEncode(file.path, { autoDownload: true });
+  } catch (e) {
+    error.value =
+      e instanceof Error ? e.message : "Failed to queue the encode.";
+  } finally {
+    pendingEncodes.value.delete(file.path);
+  }
+}
+
+async function encodeAll() {
+  encodingAll.value = true;
+  error.value = "";
+  try {
+    const targets = visibleFiles.value.filter(
+      file => statusOf(file) === "NotEncoded"
+    );
+    for (const file of targets) {
+      // eslint-disable-next-line no-await-in-loop
+      await encodes.enqueueEncode(file.path, { autoDownload: true });
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Failed to queue encodes.";
+  } finally {
+    encodingAll.value = false;
+  }
+}
+
+function downloadFile(file: MediaFileEntry) {
+  downloads.enqueue(file.path, getStreamUrl(file.path), file.name);
+}
+
+function deleteFile(file: MediaFileEntry) {
+  downloads.deleteDownload(file.path);
+}
 
 async function load(path: string) {
   loading.value = true;
   error.value = "";
   try {
     result.value = await browseMedia(path);
-    void refreshDownloadedStatus(result.value.files);
   } catch (e) {
     error.value = isOffline.value
       ? "This folder hasn't been saved for offline browsing yet."

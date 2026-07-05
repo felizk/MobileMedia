@@ -3,7 +3,11 @@ import getMimeByUrl from "./get-mime-by-url";
 import getIDBConnection from "./idb-connection";
 import type { FileChunk, FileMeta } from "./types";
 
-type FlushHandler = (fileMeta: FileMeta, fileChunk: FileChunk, isDone: boolean) => void;
+type FlushHandler = (
+  fileMeta: FileMeta,
+  fileChunk: FileChunk,
+  isDone: boolean
+) => void;
 
 /**
  * Downloads a single video file from the network, chunking the data into
@@ -83,7 +87,8 @@ export default class DownloadManager {
     if (!contentRange) {
       fileMeta.bytesDownloaded = 0;
     }
-    fileMeta.mimeType = response.headers.get("Content-Type") || getMimeByUrl(fileMeta.url);
+    fileMeta.mimeType =
+      response.headers.get("Content-Type") || getMimeByUrl(fileMeta.url);
     fileMeta.bytesTotal = fileLength > 0 ? fileLength : null;
 
     let chunk = await reader.read();
@@ -113,6 +118,8 @@ export default class DownloadManager {
       fileMeta.done = true;
     }
 
-    this.flushHandlers.forEach((handler) => handler(fileMeta, fileChunk, Boolean(opts.done)));
+    this.flushHandlers.forEach(handler =>
+      handler(fileMeta, fileChunk, Boolean(opts.done))
+    );
   }
 }

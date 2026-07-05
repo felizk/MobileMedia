@@ -19,6 +19,7 @@ import { CacheableResponsePlugin } from "workbox-cacheable-response";
 import DownloadManager from "./offline-video/download-manager";
 import StorageManager from "./offline-video/storage-manager";
 import getVideoCacheResponse from "./offline-video/video-cache";
+import getIDBConnection from "./offline-video/idb-connection";
 import type { ClientMessage, WorkerMessage } from "./offline-video/types";
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
@@ -66,7 +67,10 @@ registerRoute(
     // so this cast is just accommodating that upstream gap.
     plugins: [
       new CacheableResponsePlugin({ statuses: [200] }) as WorkboxPlugin,
-      new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 7 * 24 * 60 * 60 }) as WorkboxPlugin
+      new ExpirationPlugin({
+        maxEntries: 200,
+        maxAgeSeconds: 7 * 24 * 60 * 60
+      }) as WorkboxPlugin
     ]
   })
 );
@@ -75,11 +79,14 @@ registerRoute(
 // worker taking control (clientsClaim() only kicks in once activation
 // completes), so the root listing wouldn't otherwise be cached until a
 // second visit. Warm it eagerly on install so "offline home" always works.
-self.addEventListener("install", (event) => {
+self.addEventListener("install", event => {
   event.waitUntil(
     fetch(MEDIA_BROWSE_ROOT_URL)
-      .then((response) => {
-        if (response.ok) return caches.open(MEDIA_BROWSE_CACHE).then((cache) => cache.put(MEDIA_BROWSE_ROOT_URL, response));
+      .then(response => {
+        if (response.ok)
+          return caches
+            .open(MEDIA_BROWSE_CACHE)
+            .then(cache => cache.put(MEDIA_BROWSE_ROOT_URL, response));
       })
       .catch(() => {
         // No network at install time — nothing to warm, the app just
@@ -90,35 +97,61 @@ self.addEventListener("install", (event) => {
 
 // Offline video caching: serve fully-downloaded video/audio files from
 // IndexedDB (with Range support), falling back to the network otherwise.
-self.addEventListener("fetch", (event) => {
+self.addEventListener("fetch", event => {
   const destination = event.request.destination;
   if (destination !== "video" && destination !== "audio") return;
 
   event.respondWith(
-    getVideoCacheResponse(event.request).then((cached) => cached ?? fetch(event.request))
+    getVideoCacheResponse(event.request).then(
+      cached => cached ?? fetch(event.request)
+    )
   );
 });
 
-self.addEventListener("message", (event) => {
+self.addEventListener("message", event => {
   const data = event.data as ClientMessage;
-  if (data?.type !== "download-video") return;
+  if (data?.type !== "download-video" && data?.type !== "delete-video") return;
 
   const client = event.source;
   const postToClient = (message: WorkerMessage) => {
     if (client && "postMessage" in client) client.postMessage(message);
   };
 
+  if (data.type === "delete-video") {
+    event.waitUntil(
+      (async () => {
+        const db = await getIDBConnection();
+        const files = await db.file.getByVideoId(data.videoId);
+        await db.removeVideo(data.videoId, files);
+        postToClient({ type: "delete-done", videoId: data.videoId });
+      })().catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Unknown delete error.";
+        postToClient({ type: "delete-error", videoId: data.videoId, message });
+      })
+    );
+    return;
+  }
+
   const downloadManager = new DownloadManager(data.videoId, data.url);
   const storageManager = new StorageManager(data.videoId);
 
-  storageManager.onprogress = (progress) => {
-    postToClient({ type: "download-progress", videoId: data.videoId, progress });
+  storageManager.onprogress = progress => {
+    postToClient({
+      type: "download-progress",
+      videoId: data.videoId,
+      progress
+    });
   };
   storageManager.ondone = () => {
     postToClient({ type: "download-done", videoId: data.videoId });
   };
-  storageManager.onerror = (error) => {
-    postToClient({ type: "download-error", videoId: data.videoId, message: error.message });
+  storageManager.onerror = error => {
+    postToClient({
+      type: "download-error",
+      videoId: data.videoId,
+      message: error.message
+    });
   };
 
   downloadManager.attachFlushHandler((fileMeta, fileChunk, isDone) => {
@@ -127,7 +160,8 @@ self.addEventListener("message", (event) => {
 
   event.waitUntil(
     downloadManager.run().catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : "Unknown download error.";
+      const message =
+        error instanceof Error ? error.message : "Unknown download error.";
       postToClient({ type: "download-error", videoId: data.videoId, message });
     })
   );

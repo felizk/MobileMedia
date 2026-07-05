@@ -13,10 +13,18 @@
       </q-breadcrumbs>
 
       <q-banner v-if="isOffline" class="bg-warning text-white q-mb-md" rounded>
-        You're offline{{ isDownloaded ? " — playing your downloaded copy." : "." }}
+        You're offline{{
+          isDownloaded ? " — playing your downloaded copy." : "."
+        }}
       </q-banner>
 
-      <video v-if="canPlay" controls crossorigin="anonymous" :src="streamUrl" class="full-width" />
+      <video
+        v-if="canPlay"
+        controls
+        crossorigin="anonymous"
+        :src="streamUrl"
+        class="full-width"
+      />
       <div
         v-else
         class="full-width bg-grey-3 text-grey-8 column items-center q-pa-xl rounded-borders"
@@ -26,57 +34,86 @@
       </div>
 
       <div class="row items-center q-mt-md q-gutter-sm">
-        <q-chip v-if="isDownloaded" color="positive" text-color="white" icon="offline_pin">
-          Downloaded for offline
-        </q-chip>
+        <template v-if="isDownloaded">
+          <q-chip color="positive" text-color="white" icon="offline_pin">
+            Downloaded for offline
+          </q-chip>
+          <q-btn
+            outline
+            color="negative"
+            icon="delete"
+            label="Delete from device"
+            no-caps
+            @click="deleteDownload"
+          />
+        </template>
 
-        <q-btn
-          v-else-if="!isOffline"
-          color="primary"
-          label="Download for offline"
-          no-caps
-          :loading="downloading"
-          @click="startDownload"
-        />
+        <template v-else-if="downloadItem?.status === 'downloading'">
+          <q-circular-progress
+            :value="(downloadItem.progress ?? 0) * 100"
+            :indeterminate="downloadItem.progress == null"
+            show-value
+            size="40px"
+            color="primary"
+            track-color="grey-4"
+          >
+            <span class="text-caption"
+              >{{ Math.round((downloadItem.progress ?? 0) * 100) }}%</span
+            >
+          </q-circular-progress>
+          <div>Downloading…</div>
+        </template>
 
-        <div v-else class="text-grey">Connect to the internet to download this video.</div>
+        <template v-else-if="downloadItem?.status === 'queued'">
+          <q-chip color="grey" text-color="white" icon="downloading">
+            Waiting in download queue
+          </q-chip>
+        </template>
 
-        <div>{{ status }}</div>
+        <template v-else-if="!isOffline">
+          <q-btn
+            color="primary"
+            label="Download for offline"
+            no-caps
+            @click="startDownload"
+          />
+          <div v-if="downloadItem?.status === 'error'" class="text-negative">
+            Download failed: {{ downloadItem.error }}
+          </div>
+        </template>
+
+        <div v-else class="text-grey"
+          >Connect to the internet to download this video.</div
+        >
       </div>
     </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { getStreamUrl, toBrowsePath } from "@/services/media-api";
-import { onDownloadMessage, requestVideoDownload } from "@/services/offline-video";
-import { getDownloadedUrls } from "@/services/offline-video-status";
+import { useDownloadsStore } from "@/stores/downloads";
 
 const route = useRoute("//watch/[...path]");
 const path = computed(() => route.params.path);
 const streamUrl = computed(() => getStreamUrl(path.value));
 
+const downloads = useDownloadsStore();
+
 const segments = computed(() => path.value.split("/").filter(Boolean));
 const fileName = computed(() => segments.value.at(-1) ?? "");
 const directoryBreadcrumbs = computed(() => {
   let cumulative = "";
-  return segments.value.slice(0, -1).map((name) => {
+  return segments.value.slice(0, -1).map(name => {
     cumulative = cumulative ? `${cumulative}/${name}` : name;
     return { name, path: cumulative };
   });
 });
 
-const downloading = ref(false);
-const status = ref("");
-const isDownloaded = ref(false);
-
-async function refreshDownloadedStatus() {
-  const downloaded = await getDownloadedUrls([streamUrl.value]);
-  isDownloaded.value = downloaded.has(streamUrl.value);
-}
-watch(streamUrl, refreshDownloadedStatus, { immediate: true });
+const isDownloaded = computed(() => downloads.isDownloaded(path.value));
+const downloadItem = computed(() => downloads.itemFor(path.value));
 
 const isOffline = ref(!navigator.onLine);
 const updateOnlineStatus = () => {
@@ -84,33 +121,18 @@ const updateOnlineStatus = () => {
 };
 window.addEventListener("online", updateOnlineStatus);
 window.addEventListener("offline", updateOnlineStatus);
-
-const canPlay = computed(() => isDownloaded.value || !isOffline.value);
-
-const unsubscribe = onDownloadMessage((message) => {
-  if (message.videoId !== path.value) return;
-
-  if (message.type === "download-progress") {
-    status.value = `Downloading… ${Math.round(message.progress * 100)}%`;
-  } else if (message.type === "download-done") {
-    downloading.value = false;
-    status.value = "";
-    isDownloaded.value = true;
-  } else if (message.type === "download-error") {
-    downloading.value = false;
-    status.value = `Error: ${message.message}`;
-  }
-});
-
 onUnmounted(() => {
-  unsubscribe();
   window.removeEventListener("online", updateOnlineStatus);
   window.removeEventListener("offline", updateOnlineStatus);
 });
 
-async function startDownload() {
-  downloading.value = true;
-  status.value = "Starting download…";
-  await requestVideoDownload(path.value, streamUrl.value);
+const canPlay = computed(() => isDownloaded.value || !isOffline.value);
+
+function startDownload() {
+  downloads.enqueue(path.value, streamUrl.value, fileName.value);
+}
+
+function deleteDownload() {
+  downloads.deleteDownload(path.value);
 }
 </script>

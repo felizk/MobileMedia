@@ -1,4 +1,9 @@
-import { DB_NAME, DB_VERSION, STORAGE_SCHEMA, IDB_CHUNK_INDEX } from "./constants";
+import {
+  DB_NAME,
+  DB_VERSION,
+  STORAGE_SCHEMA,
+  IDB_CHUNK_INDEX
+} from "./constants";
 import type { VideoMeta, FileMeta, FileChunk } from "./types";
 
 interface DefaultAccessor {
@@ -20,8 +25,12 @@ class MetaAccessor {
 
     return new Promise((resolve, reject) => {
       const request = store.get(videoId);
-      request.onsuccess = () => resolve((request.result as VideoMeta | undefined) ?? defaultValue);
-      request.onerror = () => reject(new Error(`Unable to fetch meta information for video: ${videoId}`));
+      request.onsuccess = () =>
+        resolve((request.result as VideoMeta | undefined) ?? defaultValue);
+      request.onerror = () =>
+        reject(
+          new Error(`Unable to fetch meta information for video: ${videoId}`)
+        );
     });
   }
 
@@ -37,7 +46,8 @@ class MetaAccessor {
         );
         resolve(entries);
       };
-      request.onerror = () => reject(new Error("Unable to fetch meta information."));
+      request.onerror = () =>
+        reject(new Error("Unable to fetch meta information."));
     });
   }
 
@@ -68,7 +78,7 @@ class FileAccessor {
     const transaction = this.db.transaction([this.name], "readonly");
     const store = transaction.objectStore(this.name);
 
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       const request = store.get(url);
       request.onsuccess = () => resolve(request.result as FileMeta | undefined);
       request.onerror = () => resolve(undefined);
@@ -81,12 +91,13 @@ class FileAccessor {
     const idIndex = store.index("videoId");
     const keyRange = IDBKeyRange.only(videoId);
 
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       const fileMeta: FileMeta[] = [];
       const request = idIndex.openCursor(keyRange);
 
-      request.onsuccess = (e) => {
-        const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+      request.onsuccess = e => {
+        const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>)
+          .result;
         if (cursor) {
           fileMeta.push(cursor.value as FileMeta);
           cursor.continue();
@@ -141,7 +152,8 @@ export class IDBConnection {
       transaction.objectStore(this.file.name).clear();
 
       transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(new Error("Unable to clear offline video storage."));
+      transaction.onerror = () =>
+        reject(new Error("Unable to clear offline video storage."));
     });
   }
 
@@ -164,7 +176,7 @@ export class IDBConnection {
         );
         const cursorRequest = dataUrlIndex.openKeyCursor(range);
 
-        cursorRequest.onsuccess = (e) => {
+        cursorRequest.onsuccess = e => {
           const cursor = (e.target as IDBRequest<IDBCursor | null>).result;
           if (cursor) {
             dataStore.delete(cursor.primaryKey);
@@ -173,14 +185,15 @@ export class IDBConnection {
         };
       };
 
-      files.forEach((file) => {
+      files.forEach(file => {
         fileStore.delete(file.url);
         removeFileChunks(file);
       });
       metaStore.delete(id);
 
       transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(new Error(`Unable to remove video: ${id}`));
+      transaction.onerror = () =>
+        reject(new Error(`Unable to remove video: ${id}`));
     });
   }
 }
@@ -195,15 +208,24 @@ export default function getIDBConnection(): Promise<IDBConnection> {
     const dbRequest = indexedDB.open(DB_NAME, DB_VERSION);
 
     dbRequest.onsuccess = () => resolve(new IDBConnection(dbRequest.result));
-    dbRequest.onerror = () => reject(new Error("Unable to open offline video database."));
+    dbRequest.onerror = () =>
+      reject(new Error("Unable to open offline video database."));
 
-    dbRequest.onupgradeneeded = (e) => {
+    dbRequest.onupgradeneeded = e => {
       const db = (e.target as IDBOpenDBRequest).result;
 
-      db.createObjectStore(STORAGE_SCHEMA.meta.name, { keyPath: STORAGE_SCHEMA.meta.key });
+      db.createObjectStore(STORAGE_SCHEMA.meta.name, {
+        keyPath: STORAGE_SCHEMA.meta.key
+      });
 
-      const dataStore = db.createObjectStore(STORAGE_SCHEMA.data.name, { autoIncrement: true });
-      dataStore.createIndex(IDB_CHUNK_INDEX, ["url", "rangeStart", "rangeEnd"], { unique: true });
+      const dataStore = db.createObjectStore(STORAGE_SCHEMA.data.name, {
+        autoIncrement: true
+      });
+      dataStore.createIndex(
+        IDB_CHUNK_INDEX,
+        ["url", "rangeStart", "rangeEnd"],
+        { unique: true }
+      );
 
       const fileStore = db.createObjectStore(STORAGE_SCHEMA.filemeta.name, {
         keyPath: STORAGE_SCHEMA.filemeta.key

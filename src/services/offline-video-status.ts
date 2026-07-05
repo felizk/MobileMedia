@@ -14,44 +14,52 @@ async function openIfExists(): Promise<IDBDatabase | null> {
   if (!("databases" in indexedDB)) return null;
 
   const databases = await indexedDB.databases();
-  if (!databases.some((db) => db.name === DB_NAME)) return null;
+  if (!databases.some(db => db.name === DB_NAME)) return null;
 
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const request = indexedDB.open(DB_NAME);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => resolve(null);
   });
 }
 
-/** Returns the subset of the given URLs that have been fully downloaded for offline playback. */
-export async function getDownloadedUrls(urls: string[]): Promise<Set<string>> {
-  const downloaded = new Set<string>();
-  if (urls.length === 0) return downloaded;
+export interface DownloadedVideo {
+  /** The source-tree file path used as the download's identifier. */
+  videoId: string;
+  /** The stream URL the bytes were fetched from. */
+  url: string;
+}
 
+/** Returns every video that has been fully downloaded for offline playback. */
+export async function getDownloadedVideos(): Promise<DownloadedVideo[]> {
   const db = await openIfExists();
-  if (!db) return downloaded;
+  if (!db) return [];
 
   if (!db.objectStoreNames.contains(FILE_META_STORE)) {
     db.close();
-    return downloaded;
+    return [];
   }
 
-  const store = db.transaction([FILE_META_STORE], "readonly").objectStore(FILE_META_STORE);
+  const store = db
+    .transaction([FILE_META_STORE], "readonly")
+    .objectStore(FILE_META_STORE);
 
-  await Promise.all(
-    urls.map(
-      (url) =>
-        new Promise<void>((resolve) => {
-          const request = store.get(url);
-          request.onsuccess = () => {
-            const fileMeta = request.result as { done?: boolean } | undefined;
-            if (fileMeta?.done) downloaded.add(url);
-            resolve();
-          };
-          request.onerror = () => resolve();
-        })
-    )
-  );
+  const downloaded = await new Promise<DownloadedVideo[]>(resolve => {
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const entries = request.result as {
+        videoId: string;
+        url: string;
+        done?: boolean;
+      }[];
+      resolve(
+        entries
+          .filter(entry => entry.done)
+          .map(entry => ({ videoId: entry.videoId, url: entry.url }))
+      );
+    };
+    request.onerror = () => resolve([]);
+  });
 
   db.close();
   return downloaded;

@@ -6,7 +6,11 @@ import type { FileChunk, FileMeta } from "./types";
  * Builds a `Range`-aware streamed `Response` for a fully downloaded video,
  * reading its chunks back out of IndexedDB in reverse-cursor order.
  */
-function getResponseStream(request: Request, db: IDBConnection, fileMeta: FileMeta): Response {
+function getResponseStream(
+  request: Request,
+  db: IDBConnection,
+  fileMeta: FileMeta
+): Response {
   const rangeHeader = request.headers.get("range") ?? "";
   const byteRanges = rangeHeader.match(/bytes=(?<from>[0-9]+)?-(?<to>[0-9]+)?/);
   const bytesTotal = fileMeta.bytesTotal ?? fileMeta.bytesDownloaded;
@@ -18,7 +22,10 @@ function getResponseStream(request: Request, db: IDBConnection, fileMeta: FileMe
   const stream = new ReadableStream<Uint8Array>({
     pull(controller) {
       const rawIDB = db.unwrap();
-      const transaction = rawIDB.transaction(STORAGE_SCHEMA.data.name, "readonly");
+      const transaction = rawIDB.transaction(
+        STORAGE_SCHEMA.data.name,
+        "readonly"
+      );
       const store = transaction.objectStore(STORAGE_SCHEMA.data.name);
 
       // All entries for this URL whose rangeStart is <= currentBytePointer,
@@ -31,17 +38,19 @@ function getResponseStream(request: Request, db: IDBConnection, fileMeta: FileMe
       const index = store.index(IDB_CHUNK_INDEX);
       const cursorRequest = index.openCursor(allEntriesForUrlRange, "prev");
 
-      return new Promise<void>((resolve) => {
+      return new Promise<void>(resolve => {
         cursorRequest.onerror = () => {
           controller.close();
           resolve();
         };
-        cursorRequest.onsuccess = (e) => {
-          const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+        cursorRequest.onsuccess = e => {
+          const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>)
+            .result;
 
           if (cursor) {
             const dataChunk = cursor.value as FileChunk;
-            const needsSlice = dataChunk.rangeStart < rangeFrom || dataChunk.rangeEnd > rangeTo;
+            const needsSlice =
+              dataChunk.rangeStart < rangeFrom || dataChunk.rangeEnd > rangeTo;
             const outOfBounds = dataChunk.rangeEnd < currentBytePointer;
 
             if (outOfBounds) {
@@ -55,7 +64,9 @@ function getResponseStream(request: Request, db: IDBConnection, fileMeta: FileMe
                 dataChunk.rangeEnd - dataChunk.rangeStart + 1,
                 rangeTo - dataChunk.rangeStart + 1
               );
-              const bufferSlice = new Uint8Array(dataChunk.data.slice(sliceFrom, sliceTo));
+              const bufferSlice = new Uint8Array(
+                dataChunk.data.slice(sliceFrom, sliceTo)
+              );
               controller.enqueue(bufferSlice);
               currentBytePointer += bufferSlice.length;
             }
@@ -91,7 +102,9 @@ function getResponseStream(request: Request, db: IDBConnection, fileMeta: FileMe
  * Returns `null` if nothing cached is found, so the caller can fall back
  * to a normal network fetch.
  */
-export default async function getVideoCacheResponse(request: Request): Promise<Response | null> {
+export default async function getVideoCacheResponse(
+  request: Request
+): Promise<Response | null> {
   const db = await getIDBConnection();
   const fileMeta = await db.file.get(request.url);
 

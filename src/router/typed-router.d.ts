@@ -38,6 +38,7 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | '//(index)'
       | '//browse/[...path]'
+      | '//encodes'
       | '//watch/[...path]'
     >,
     '//(index)': RouteRecordInfo<
@@ -52,6 +53,13 @@ declare module 'vue-router/auto-routes' {
       '/browse/:path(.*)',
       { path: ParamValue<true> },
       { path: ParamValue<false> },
+      | never
+    >,
+    '//encodes': RouteRecordInfo<
+      '//encodes',
+      '/encodes',
+      Record<never, never>,
+      Record<never, never>,
       | never
     >,
     '//watch/[...path]': RouteRecordInfo<
@@ -86,6 +94,7 @@ declare module 'vue-router/auto-routes' {
         | '/'
         | '//(index)'
         | '//browse/[...path]'
+        | '//encodes'
         | '//watch/[...path]'
       views:
         | 'default'
@@ -107,6 +116,14 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'path'
+    }
+    'src/pages/index/encodes.vue': {
+      routes:
+        | '//encodes'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
     'src/pages/index/watch/[...path].vue': {
       routes:

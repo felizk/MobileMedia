@@ -42,9 +42,20 @@ export interface DownloadVideoMessage {
   url: string;
 }
 
-export type ClientMessage = DownloadVideoMessage;
+/**
+ * Message sent from a page to the service worker to remove a downloaded
+ * video (meta, file meta and all chunks) from offline storage.
+ */
+export interface DeleteVideoMessage {
+  type: "delete-video";
+  videoId: string;
+}
+
+export type ClientMessage = DownloadVideoMessage | DeleteVideoMessage;
 
 export type WorkerMessage =
   | { type: "download-progress"; videoId: string; progress: number }
   | { type: "download-done"; videoId: string }
-  | { type: "download-error"; videoId: string; message: string };
+  | { type: "download-error"; videoId: string; message: string }
+  | { type: "delete-done"; videoId: string }
+  | { type: "delete-error"; videoId: string; message: string };

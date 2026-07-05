@@ -42,7 +42,11 @@ export default class FixedBuffer {
   }
 
   /** Returns a buffer view over `data` starting at `offset`, capped at `availableLength`. */
-  private crop(data: Uint8Array, offset: number, availableLength: number): Uint8Array {
+  private crop(
+    data: Uint8Array,
+    offset: number,
+    availableLength: number
+  ): Uint8Array {
     const length = Math.min(availableLength, data.length - offset);
     return new Uint8Array(data.buffer, offset, length);
   }
