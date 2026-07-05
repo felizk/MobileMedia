@@ -50,6 +50,9 @@
           >
             {{ job.errorMessage }}
           </q-item-label>
+          <q-item-label v-if="encodeDuration(job)" caption>
+            Encoded in {{ encodeDuration(job) }}
+          </q-item-label>
           <template v-if="job.status === 'Running'">
             <q-linear-progress
               :value="job.progress ?? 0"
@@ -118,6 +121,23 @@ function progressLabel(job: EncodeJob): string {
   return minutes >= 1
     ? `${percent} · ${minutes}m left`
     : `${percent} · ${Math.round(job.etaSeconds)}s left`;
+}
+
+/** "3m 12s"-style wall-clock time of a completed encode, or "" when n/a. */
+function encodeDuration(job: EncodeJob): string {
+  if (job.status !== "Completed" || !job.startedAt || !job.completedAt) {
+    return "";
+  }
+  const seconds = Math.round(
+    (Date.parse(job.completedAt) - Date.parse(job.startedAt)) / 1000
+  );
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
 function statusColor(status: EncodeJobStatus): string {
