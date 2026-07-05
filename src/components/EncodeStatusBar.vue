@@ -25,7 +25,6 @@
       </div>
       <q-linear-progress
         :value="encodes.runningJob.progress ?? 0"
-        :indeterminate="encodes.runningJob.progress == null"
         color="orange"
         track-color="grey-8"
         class="q-mt-xs"

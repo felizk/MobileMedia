@@ -56,7 +56,6 @@
           <template v-if="job.status === 'Running'">
             <q-linear-progress
               :value="job.progress ?? 0"
-              :indeterminate="job.progress == null"
               color="orange"
               class="q-mt-xs"
               rounded
