@@ -338,7 +338,7 @@ async function encodeFile(file: MediaFileEntry) {
   pendingEncodes.value.add(file.path);
   error.value = "";
   try {
-    await encodes.enqueueEncode(file.path, { autoDownload: true });
+    await encodes.enqueueEncode(file.path, { autoDownload: false });
   } catch (e) {
     error.value =
       e instanceof Error ? e.message : "Failed to queue the encode.";
@@ -356,7 +356,7 @@ async function encodeAll() {
     );
     for (const file of targets) {
       // eslint-disable-next-line no-await-in-loop
-      await encodes.enqueueEncode(file.path, { autoDownload: true });
+      await encodes.enqueueEncode(file.path, { autoDownload: false });
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to queue encodes.";
