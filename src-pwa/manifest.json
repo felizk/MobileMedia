@@ -3,7 +3,7 @@
   "background_color": "#ffffff",
   "theme_color": "#027be3",
   "display_override": ["fullscreen", "minimal-ui"],
-  "display": "standalone",
+  "display": "fullscreen",
   "icons": [
     {
       "src": "icons/icon-128x128.png",
