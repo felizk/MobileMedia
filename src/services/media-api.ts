@@ -31,9 +31,17 @@ function encodePathSegments(path: string): string {
   return path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
 }
 
-export async function browseMedia(path: string): Promise<BrowseResult> {
+/**
+ * Lists one directory of the source tree. With `encodedOnly`, the server
+ * returns only Encoded files and folders that exist in the media tree.
+ */
+export async function browseMedia(
+  path: string,
+  opts?: { encodedOnly?: boolean }
+): Promise<BrowseResult> {
+  const query = opts?.encodedOnly ? "?encodedOnly=true" : "";
   const response = await fetch(
-    `${API_BASE}/browse/${encodePathSegments(path)}`
+    `${API_BASE}/browse/${encodePathSegments(path)}${query}`
   );
   if (!response.ok) {
     throw new Error(`Failed to browse "${path || "/"}" (${response.status}).`);

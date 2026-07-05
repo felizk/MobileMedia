@@ -35,8 +35,8 @@
       >
         <q-tooltip>{{
           downloads.downloadedOnly
-            ? "Showing downloaded only — tap to show everything"
-            : "Show downloaded only"
+            ? "Showing encoded & downloaded only — tap to show everything"
+            : "Show encoded & downloaded only"
         }}</q-tooltip>
       </q-btn>
     </div>
@@ -180,9 +180,11 @@
       <q-item v-if="isEmpty">
         <q-item-section class="text-grey">
           {{
-            showDownloadedOnly
+            isOffline
               ? "Nothing downloaded in this folder."
-              : "This folder is empty."
+              : downloads.downloadedOnly
+                ? "Nothing encoded or downloaded in this folder."
+                : "This folder is empty."
           }}
         </q-item-section>
       </q-item>
@@ -274,14 +276,17 @@ function isPlayable(file: MediaFileEntry): boolean {
   );
 }
 
-// Forced while offline; a manual toggle the rest of the time.
-const showDownloadedOnly = computed(
-  () => isOffline.value || downloads.downloadedOnly
+// With the toggle on while online, the server does the filtering
+// (?encodedOnly=true → encoded files plus folders holding encoded
+// content). Fully offline we can only trust what's on the device, so we
+// filter to downloads client-side regardless of the toggle.
+const encodedOnlyRequest = computed(
+  () => !isOffline.value && downloads.downloadedOnly
 );
 
 const visibleDirectories = computed(() => {
   const dirs = result.value?.directories ?? [];
-  if (!showDownloadedOnly.value) return dirs;
+  if (!isOffline.value) return dirs;
   // Only folders that (transitively) contain a downloaded video.
   return dirs.filter(dir => {
     const prefix = `${dir.path}/`;
@@ -294,7 +299,7 @@ const visibleDirectories = computed(() => {
 
 const visibleFiles = computed(() => {
   const files = result.value?.files ?? [];
-  if (!showDownloadedOnly.value) return files;
+  if (!isOffline.value) return files;
   return files.filter(file => isDownloaded(file));
 });
 
@@ -364,8 +369,14 @@ function deleteFile(file: MediaFileEntry) {
   downloads.deleteDownload(file.path);
 }
 
-async function load(path: string) {
-  const cached = browseCache.get(path);
+async function load() {
+  const path = props.path;
+  const encodedOnly = encodedOnlyRequest.value;
+  const isStale = () =>
+    props.path !== path || encodedOnlyRequest.value !== encodedOnly;
+
+  const cacheKey = `${encodedOnly ? "encoded" : "all"}:${path}`;
+  const cached = browseCache.get(cacheKey);
   error.value = "";
   if (cached) {
     // Render the last listing synchronously so returning to a folder is
@@ -378,22 +389,22 @@ async function load(path: string) {
   }
 
   try {
-    const fresh = await browseMedia(path);
-    browseCache.set(path, fresh);
-    if (props.path === path) result.value = fresh;
+    const fresh = await browseMedia(path, { encodedOnly });
+    browseCache.set(cacheKey, fresh);
+    if (!isStale()) result.value = fresh;
   } catch (e) {
-    if (props.path !== path || cached) return; // keep showing the cached listing
+    if (isStale() || cached) return; // keep showing the cached listing
     error.value = isOffline.value
       ? "This folder hasn't been saved for offline browsing yet."
       : e instanceof Error
         ? e.message
         : "Failed to load media.";
   } finally {
-    if (props.path === path) loading.value = false;
+    if (!isStale()) loading.value = false;
   }
 }
 
-watch(() => props.path, load, { immediate: true });
+watch([() => props.path, encodedOnlyRequest], load, { immediate: true });
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
