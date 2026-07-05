@@ -18,11 +18,10 @@
         }}
       </q-banner>
 
-      <video
+      <MediaPlayer
         v-if="canPlay"
-        controls
-        crossorigin="anonymous"
         :src="streamUrl"
+        :position-key="path"
         class="full-width"
       />
       <div
@@ -118,6 +117,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
+import MediaPlayer from "@/components/MediaPlayer.vue";
 import { getStreamUrl, toBrowsePath } from "@/services/media-api";
 import { useDownloadsStore } from "@/stores/downloads";
 
