@@ -83,6 +83,19 @@
             >
               <q-tooltip>Cancel</q-tooltip>
             </q-btn>
+            <q-btn
+              v-if="job.status === 'Failed' || job.status === 'Canceled'"
+              flat
+              round
+              dense
+              icon="replay"
+              color="primary"
+              :loading="requeuing.has(job.id)"
+              aria-label="Requeue encode"
+              @click="requeueJob(job)"
+            >
+              <q-tooltip>Requeue</q-tooltip>
+            </q-btn>
           </div>
         </q-item-section>
       </q-item>
@@ -103,6 +116,7 @@ const encodes = useEncodesStore();
 
 const clearing = ref(false);
 const cancelling = ref(new Set<string>());
+const requeuing = ref(new Set<string>());
 const error = ref("");
 
 function fileName(path: string): string {
@@ -179,6 +193,18 @@ async function cancelJob(id: string) {
     error.value = e instanceof Error ? e.message : "Failed to cancel the job.";
   } finally {
     cancelling.value.delete(id);
+  }
+}
+
+async function requeueJob(job: EncodeJob) {
+  requeuing.value.add(job.id);
+  error.value = "";
+  try {
+    await encodes.enqueueEncode(job.sourcePath);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Failed to requeue the job.";
+  } finally {
+    requeuing.value.delete(job.id);
   }
 }
 
