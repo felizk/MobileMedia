@@ -44,8 +44,33 @@
             icon="delete"
             label="Delete from device"
             no-caps
-            @click="deleteDownload"
+            @click="confirmingDelete = true"
           />
+
+          <q-dialog v-model="confirmingDelete">
+            <q-card>
+              <q-card-section class="row items-center">
+                <q-icon
+                  name="delete"
+                  color="negative"
+                  size="24px"
+                  class="q-mr-sm"
+                />
+                Delete "{{ fileName }}" from this device?
+              </q-card-section>
+              <q-card-actions align="right">
+                <q-btn v-close-popup flat label="Cancel" no-caps />
+                <q-btn
+                  v-close-popup
+                  flat
+                  color="negative"
+                  label="Delete"
+                  no-caps
+                  @click="deleteDownload"
+                />
+              </q-card-actions>
+            </q-card>
+          </q-dialog>
         </template>
 
         <template v-else-if="downloadItem?.status === 'downloading'">
@@ -114,6 +139,7 @@ const directoryBreadcrumbs = computed(() => {
 
 const isDownloaded = computed(() => downloads.isDownloaded(path.value));
 const downloadItem = computed(() => downloads.itemFor(path.value));
+const confirmingDelete = ref(false);
 
 const isOffline = ref(!navigator.onLine);
 const updateOnlineStatus = () => {
