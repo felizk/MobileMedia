@@ -28,13 +28,17 @@
     </q-page-container>
 
     <q-footer elevated class="bg-grey-10 text-white">
-      <EncodeStatusBar />
+      <div class="row items-center no-wrap">
+        <EncodeStatusBar class="col" />
+        <StorageIndicator class="q-px-md" />
+      </div>
     </q-footer>
   </q-layout>
 </template>
 
 <script setup lang="ts">
 import EncodeStatusBar from "@/components/EncodeStatusBar.vue";
+import StorageIndicator from "@/components/StorageIndicator.vue";
 import { useDownloadsStore } from "@/stores/downloads";
 import { useEncodesStore } from "@/stores/encodes";
 

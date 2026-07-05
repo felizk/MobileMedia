@@ -45,6 +45,32 @@ export const useDownloadsStore = defineStore("downloads", () => {
   const downloadedIds = ref(new Set<string>());
   let initialized = false;
 
+  /**
+   * Best-effort device storage figures from `navigator.storage.estimate()`.
+   * `quota` is the browser's cap for this origin (not the whole disk), and
+   * `usage` counts everything this origin stores, not only our downloads.
+   * Both are null until the first estimate resolves or when unsupported.
+   */
+  const storageUsage = ref<number | null>(null);
+  const storageQuota = ref<number | null>(null);
+
+  const storageAvailable = computed(() =>
+    storageQuota.value != null && storageUsage.value != null
+      ? Math.max(0, storageQuota.value - storageUsage.value)
+      : null
+  );
+
+  async function refreshStorageEstimate() {
+    if (!navigator.storage?.estimate) return;
+    try {
+      const { usage, quota } = await navigator.storage.estimate();
+      storageUsage.value = usage ?? null;
+      storageQuota.value = quota ?? null;
+    } catch {
+      // Leave the last known values in place.
+    }
+  }
+
   /** User preference: browse only downloaded videos, even while online. */
   const downloadedOnly = ref(
     localStorage.getItem(DOWNLOADED_ONLY_STORAGE_KEY) === "1"
@@ -148,6 +174,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
           item.status = "done";
           item.progress = 1;
         }
+        void refreshStorageEstimate();
         pump();
         break;
       case "download-error":
@@ -159,6 +186,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
         break;
       case "delete-done":
         downloadedIds.value.delete(message.videoId);
+        void refreshStorageEstimate();
         break;
       case "delete-error":
         // The video may still be on disk; re-scan so the UI stays truthful.
@@ -198,6 +226,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
     initialized = true;
 
     onDownloadMessage(handleMessage);
+    void refreshStorageEstimate();
     restoreQueue();
     void refreshDownloadedIds().then(() => {
       // Drop restored entries that actually finished before the reload.
@@ -221,6 +250,10 @@ export const useDownloadsStore = defineStore("downloads", () => {
     downloadingCount,
     queuedCount,
     activeCount,
+    storageUsage,
+    storageQuota,
+    storageAvailable,
+    refreshStorageEstimate,
     isDownloaded,
     itemFor,
     enqueue,
