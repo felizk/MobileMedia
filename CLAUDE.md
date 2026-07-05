@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Workflow
+
+Work directly on `main` — no feature branches. Commit to `main` and push there.
+
 ## Commands
 
 - `yarn dev` — dev server with HMR (`quasar dev`).
