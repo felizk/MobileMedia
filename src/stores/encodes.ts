@@ -7,6 +7,7 @@ import {
   getEncodeQueueWsUrl,
   isFinishedStatus,
   queueEncode,
+  requeueEncodeJob,
   type EncodeJob
 } from "@/services/encode-api";
 import { getStreamUrl } from "@/services/media-api";
@@ -58,10 +59,10 @@ export const useEncodesStore = defineStore("encodes", () => {
     }
   }
 
+  // Sort by `order`, not `queuedAt`: a requeued job keeps its original
+  // `queuedAt` but moves to the front of the queue via a new `order`.
   const jobList = computed(() =>
-    [...jobs.value.values()].sort((a, b) =>
-      a.queuedAt.localeCompare(b.queuedAt)
-    )
+    [...jobs.value.values()].sort((a, b) => a.order - b.order)
   );
   const runningJob = computed(
     () => jobList.value.find(job => job.status === "Running") ?? null
@@ -82,7 +83,13 @@ export const useEncodesStore = defineStore("encodes", () => {
    */
   const jobBySourcePath = computed(() => {
     const map = new Map<string, EncodeJob>();
-    for (const job of jobList.value) map.set(job.sourcePath, job);
+    for (const job of jobList.value) {
+      // An active (Queued/Running) job describes the file's current state
+      // better than any finished one, wherever it sits in the queue order.
+      const existing = map.get(job.sourcePath);
+      if (existing && !isFinishedStatus(existing.status)) continue;
+      map.set(job.sourcePath, job);
+    }
     return map;
   });
 
@@ -124,8 +131,8 @@ export const useEncodesStore = defineStore("encodes", () => {
       jobs.value = new Map();
 
       // Auto-download intents for jobs the server no longer knows about
-      // (it restarted and lost its in-memory list) can never fire — prune
-      // them once the snapshot has had time to arrive.
+      // (e.g. cleared from the list by another client) can never fire —
+      // prune them once the snapshot has had time to arrive.
       setTimeout(() => {
         if (socket !== ws) return;
         for (const jobId of autoDownloadJobs.keys()) {
@@ -162,6 +169,11 @@ export const useEncodesStore = defineStore("encodes", () => {
     return job;
   }
 
+  /** Requeues a Failed/Canceled job under the same id, at the queue front. */
+  async function requeueJob(id: string) {
+    upsertJob(await requeueEncodeJob(id));
+  }
+
   async function cancelJob(id: string) {
     // A running job answers 202 still marked Running; the Canceled
     // transition follows over the WebSocket moments later.
@@ -195,6 +207,7 @@ export const useEncodesStore = defineStore("encodes", () => {
     activeCount,
     jobBySourcePath,
     enqueueEncode,
+    requeueJob,
     cancelJob,
     clearFinished,
     init

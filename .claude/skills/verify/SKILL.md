@@ -34,12 +34,12 @@ const browser = await chromium.launch({
 ```
 
 - Real, playable, **Encoded** episodes to point tests at: `Anime/Lycoris
-  Recoil` and `Anime/Ruri Rocks` (check current status via
+Recoil` and `Anime/Ruri Rocks` (check current status via
   `GET /api/media/browse/<folder>` — statuses change as the library evolves;
   `Anime/Apocalypse Hotel` has had NotEncoded episodes, useful for
   unplayable-file cases).
 - Seek-to-end works against the real stream (`video.currentTime =
-  duration - 2; play()` then wait for `ended`) — Range requests are
+duration - 2; play()` then wait for `ended`) — Range requests are
   supported, so this is cheap.
 - Client state lives in localStorage: `mobilemedia-playback-positions`,
   `mobilemedia-watched`. Seed via `addInitScript`, but **guard with a

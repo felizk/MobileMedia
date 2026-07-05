@@ -200,7 +200,7 @@ async function requeueJob(job: EncodeJob) {
   requeuing.value.add(job.id);
   error.value = "";
   try {
-    await encodes.enqueueEncode(job.sourcePath);
+    await encodes.requeueJob(job.id);
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to requeue the job.";
   } finally {

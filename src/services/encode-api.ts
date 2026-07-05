@@ -14,6 +14,12 @@ export interface EncodeJob {
   sourcePath: string;
   destinationPath: string;
   status: EncodeJobStatus;
+  /**
+   * Opaque processing-order key — queued jobs run lowest-first. Sort by this,
+   * not `queuedAt`: a requeued job keeps its `queuedAt` but gets a new front-
+   * of-queue `order`. Only meaningful relative to jobs in the same snapshot.
+   */
+  order: number;
   /** Fraction 0–1, null until the first progress report. */
   progress: number | null;
   /** Null or 0 while HandBrake's rate estimate stabilizes. */
@@ -59,6 +65,24 @@ export async function cancelEncodeJob(id: string): Promise<EncodeJob> {
   const response = await fetch(`${API_BASE}/queue/${id}`, { method: "DELETE" });
   if (!response.ok) {
     throw new Error(`Failed to cancel encode job (${response.status}).`);
+  }
+  return response.json() as Promise<EncodeJob>;
+}
+
+/**
+ * Re-enqueues a Failed/Canceled job under the same id, at the front of the
+ * queue. 409 if the job is in any other state.
+ */
+export async function requeueEncodeJob(id: string): Promise<EncodeJob> {
+  const response = await fetch(`${API_BASE}/queue/${id}/requeue`, {
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(
+      response.status === 409
+        ? "Only failed or canceled jobs can be requeued."
+        : `Failed to requeue encode job (${response.status}).`
+    );
   }
   return response.json() as Promise<EncodeJob>;
 }

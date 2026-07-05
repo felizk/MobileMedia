@@ -29,7 +29,7 @@ The app is a client for the **MediaTryk** server (a separate repo). Base URL is 
 
 Key model: there are **two file trees**. The _source_ tree (`.mkv`, what `browse` lists) and the _media_ tree (`.mp4`, what `stream` serves). Encoding a source file produces a media file at the same relative path with a `.mp4` extension. `getStreamUrl()` maps a source path to its media URL — never build stream URLs by hand. `browse` returns each file's `encodeStatus` (`Encoded` | `Encoding` | `NotEncoded`) and accepts `?encodedOnly=true` to return only streamable content.
 
-The encode queue is driven over a **WebSocket** (`wss://…/api/encode/queue/ws`), not polling. Two contract quirks that shape the client code: the server's job list is in-memory (resets on restart), and clear-finished sends **no** removal message — so the client replaces its state from the snapshot on every (re)connect and refetches after clearing. Adding an external host (including `wss:`) requires updating the CSP `connect-src` in `index.html`.
+The encode queue is driven over a **WebSocket** (`wss://…/api/encode/queue/ws`), not polling. Contract quirks that shape the client code: clear-finished sends **no** removal message — so the client replaces its state from the snapshot on every (re)connect and refetches after clearing — and jobs are sorted by the opaque `order` field, not `queuedAt` (requeueing a Failed/Canceled job reuses its id and moves it to the front of the queue). Adding an external host (including `wss:`) requires updating the CSP `connect-src` in `index.html`.
 
 ## State: two Pinia stores (`src/stores/`)
 
