@@ -2,8 +2,8 @@
   "orientation": "any",
   "background_color": "#ffffff",
   "theme_color": "#027be3",
-  "display_override": ["fullscreen", "minimal-ui"],
-  "display": "fullscreen",
+  "display_override": ["standalone"],
+  "display": "standalone",
   "icons": [
     {
       "src": "icons/icon-128x128.png",
