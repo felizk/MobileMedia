@@ -2,7 +2,7 @@
   <q-layout view="lHh Lpr lFf">
     <q-header elevated>
       <q-toolbar>
-        <q-toolbar-title>
+        <q-toolbar-title class="cursor-pointer" @click="$router.push('/')">
           <q-icon name="movie" class="q-mr-sm" />
           Mobile Media
         </q-toolbar-title>
