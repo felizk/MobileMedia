@@ -32,6 +32,28 @@
         This video hasn't been downloaded, so it can't be played offline.
       </div>
 
+      <div
+        v-if="prevDownloaded || nextDownloaded"
+        class="row items-center justify-between q-mt-md"
+      >
+        <q-btn
+          flat
+          no-caps
+          icon="skip_previous"
+          label="Previous"
+          :disable="!prevDownloaded"
+          :to="prevDownloaded ? toWatchPath(prevDownloaded) : undefined"
+        />
+        <q-btn
+          flat
+          no-caps
+          icon-right="skip_next"
+          label="Next"
+          :disable="!nextDownloaded"
+          :to="nextDownloaded ? toWatchPath(nextDownloaded) : undefined"
+        />
+      </div>
+
       <div class="row items-center q-mt-md q-gutter-sm">
         <template v-if="isDownloaded">
           <q-chip color="positive" text-color="white" icon="offline_pin">
@@ -118,7 +140,7 @@
 import { computed, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import MediaPlayer from "@/components/MediaPlayer.vue";
-import { getStreamUrl, toBrowsePath } from "@/services/media-api";
+import { getStreamUrl, toBrowsePath, toWatchPath } from "@/services/media-api";
 import { useDownloadsStore } from "@/stores/downloads";
 
 const route = useRoute("//watch/[...path]");
@@ -139,6 +161,33 @@ const directoryBreadcrumbs = computed(() => {
 
 const isDownloaded = computed(() => downloads.isDownloaded(path.value));
 const downloadItem = computed(() => downloads.itemFor(path.value));
+
+const folderPath = computed(() => segments.value.slice(0, -1).join("/"));
+
+/** Downloaded files sharing this file's folder, sorted for navigation. */
+const downloadedSiblings = computed(() =>
+  [...downloads.downloadedIds]
+    .filter(id => {
+      const parts = id.split("/").filter(Boolean);
+      return parts.slice(0, -1).join("/") === folderPath.value;
+    })
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+);
+
+const currentSiblingIndex = computed(() =>
+  downloadedSiblings.value.indexOf(path.value)
+);
+const prevDownloaded = computed(() =>
+  currentSiblingIndex.value > 0
+    ? downloadedSiblings.value[currentSiblingIndex.value - 1]
+    : undefined
+);
+const nextDownloaded = computed(() =>
+  currentSiblingIndex.value >= 0 &&
+  currentSiblingIndex.value < downloadedSiblings.value.length - 1
+    ? downloadedSiblings.value[currentSiblingIndex.value + 1]
+    : undefined
+);
 const confirmingDelete = ref(false);
 
 const isOffline = ref(!navigator.onLine);
