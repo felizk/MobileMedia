@@ -209,5 +209,6 @@ function startDownload() {
 
 function deleteDownload() {
   downloads.deleteDownload(path.value);
+  confirmingDelete.value = false;
 }
 </script>
