@@ -135,13 +135,29 @@ export default class DownloadManager {
     };
 
     fileMeta.bytesDownloaded += data.length;
-    if (opts.done) {
+
+    // The Streams API reports a clean end-of-stream even when the
+    // connection was cut short (this is the only end-of-body signal when
+    // there's no Content-Length to enforce). Trust the byte count over the
+    // reader's `done` flag whenever we know the expected total, so a
+    // truncated transfer isn't mistaken for a complete download.
+    const truncated =
+      Boolean(opts.done) &&
+      fileMeta.bytesTotal != null &&
+      fileMeta.bytesDownloaded !== fileMeta.bytesTotal;
+
+    const isDone = Boolean(opts.done) && !truncated;
+    if (isDone) {
       fileMeta.bytesTotal = fileMeta.bytesDownloaded;
       fileMeta.done = true;
     }
 
-    this.flushHandlers.forEach(handler =>
-      handler(fileMeta, fileChunk, Boolean(opts.done))
-    );
+    this.flushHandlers.forEach(handler => handler(fileMeta, fileChunk, isDone));
+
+    if (truncated) {
+      throw new Error(
+        `Download of ${fileMeta.url} ended early: got ${fileMeta.bytesDownloaded} of ${fileMeta.bytesTotal} bytes`
+      );
+    }
   }
 }
