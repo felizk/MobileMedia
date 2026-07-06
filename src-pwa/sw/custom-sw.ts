@@ -218,6 +218,12 @@ self.addEventListener("message", event => {
         error instanceof Error ? error.message : "Unknown download error.";
       postToClient({ type: "download-error", videoId: data.videoId, message });
     })
+    // Any chunk writes dispatched before the failure are still in flight —
+    // wait for them so a `cancel-video` purge triggered right after (e.g. a
+    // redownload) can't race one landing after the purge and resurrecting a
+    // stale chunk/fileMeta row, which would collide with the fresh
+    // download's writes on the unique video-chunk index.
+    .then(() => storageManager.settled())
     .finally(() => {
       // Leave the entry in place if a newer download has already replaced it.
       if (
