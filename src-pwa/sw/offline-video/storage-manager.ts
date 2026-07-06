@@ -55,38 +55,44 @@ export default class StorageManager {
   ): Promise<void> {
     if (this.cancelled) return;
 
-    const db = await getIDBConnection();
+    // Snapshot the file meta now, before the first `await`: DownloadManager
+    // keeps mutating the shared object as later chunks flush, so persisting it
+    // as-is could store a byte count that belongs to a different chunk. Pin
+    // `bytesDownloaded` to exactly one past this chunk's last byte so a resume
+    // computes the right offset regardless of write ordering.
+    const fileMetaSnapshot: FileMeta = {
+      ...fileMeta,
+      bytesDownloaded: fileChunk.rangeEnd + 1
+    };
     const videoMeta: VideoMeta = {
       done: isDone,
       videoId: this.videoId,
       timestamp: Date.now()
     };
 
-    const abortHandler = (transaction: IDBTransaction) => {
-      const error = transaction.error;
-      if (error?.name === "QuotaExceededError") {
+    const db = await getIDBConnection();
+
+    try {
+      await db.writeChunk(videoMeta, fileMetaSnapshot, fileChunk);
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        error.name === "QuotaExceededError"
+      ) {
         this.cancel();
       }
-      this.onerror(error ?? new Error("IndexedDB transaction aborted."));
-    };
-
-    const writePromise = (put: () => [IDBTransaction, IDBRequest]) =>
-      new Promise<void>((resolve, reject) => {
-        const [transaction, request] = put();
-        transaction.onabort = () => abortHandler(transaction);
-        request.onsuccess = () => resolve();
-        request.onerror = () =>
-          reject(new Error("Unable to write to offline video storage."));
-      });
-
-    await Promise.all([
-      writePromise(() => db.meta.put(videoMeta)),
-      writePromise(() => db.data.put(fileChunk)),
-      writePromise(() => db.file.put(fileMeta))
-    ]);
+      this.onerror(
+        error instanceof Error
+          ? error
+          : new Error("Unable to write to offline video storage.")
+      );
+      return;
+    }
 
     this.onprogress(
-      fileMeta.bytesTotal ? fileMeta.bytesDownloaded / fileMeta.bytesTotal : 0
+      fileMetaSnapshot.bytesTotal
+        ? fileMetaSnapshot.bytesDownloaded / fileMetaSnapshot.bytesTotal
+        : 0
     );
 
     if (isDone) {

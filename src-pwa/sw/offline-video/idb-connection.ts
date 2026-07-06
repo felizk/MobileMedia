@@ -139,6 +139,64 @@ export class IDBConnection {
     return this.db;
   }
 
+  /**
+   * Persists one downloaded chunk together with its file/video meta in a
+   * single transaction, so the stored byte count can never drift out of sync
+   * with the chunk data that actually landed (a resume derives its offset
+   * from `bytesDownloaded`, so a mismatch means gaps or re-written ranges).
+   *
+   * The write is idempotent: a chunk whose exact `[url, rangeStart, rangeEnd]`
+   * range is already stored replaces the existing one instead of tripping the
+   * unique index. A resume, or a redownload over bytes left behind by a failed
+   * attempt, can legitimately re-store a range — treating that as a fatal
+   * `ConstraintError` is what left downloads with a gap yet marked done, or
+   * surfaced as the "uniqueness constraint" error on redownload.
+   */
+  writeChunk(
+    videoMeta: VideoMeta,
+    fileMeta: FileMeta,
+    fileChunk: FileChunk
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(
+        [this.meta.name, this.data.name, this.file.name],
+        "readwrite"
+      );
+      const dataStore = transaction.objectStore(this.data.name);
+      const chunkIndex = dataStore.index(IDB_CHUNK_INDEX);
+
+      // Replace any chunk already stored for this exact range, then add the new
+      // one — both in this transaction, delete before put, so the unique index
+      // never sees two records for the same range.
+      const keyRequest = chunkIndex.getKey([
+        fileChunk.url,
+        fileChunk.rangeStart,
+        fileChunk.rangeEnd
+      ]);
+      keyRequest.onsuccess = () => {
+        if (keyRequest.result !== undefined) {
+          dataStore.delete(keyRequest.result);
+        }
+        dataStore.put(fileChunk);
+      };
+
+      transaction.objectStore(this.meta.name).put(videoMeta);
+      transaction.objectStore(this.file.name).put(fileMeta);
+
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () =>
+        reject(
+          transaction.error ??
+            new Error("Offline video storage transaction aborted.")
+        );
+      transaction.onerror = () =>
+        reject(
+          transaction.error ??
+            new Error("Unable to write to offline video storage.")
+        );
+    });
+  }
+
   /** Removes all entries from the database used for video storage. */
   clearAll(): Promise<void> {
     return new Promise((resolve, reject) => {
