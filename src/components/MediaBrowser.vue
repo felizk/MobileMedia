@@ -142,7 +142,7 @@
               flat
               icon="sync_problem"
               color="negative"
-              @click.stop.prevent="downloadFile(file)"
+              @click.stop.prevent="downloads.retry(file.path)"
             >
               <q-tooltip
                 >{{ downloadItemOf(file)?.error }} — tap to retry</q-tooltip

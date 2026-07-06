@@ -180,62 +180,91 @@ self.addEventListener("message", event => {
     return;
   }
 
-  const downloadManager = new DownloadManager(data.videoId, data.url);
-  const storageManager = new StorageManager(data.videoId);
-
-  storageManager.onprogress = progress => {
-    postToClient({
-      type: "download-progress",
-      videoId: data.videoId,
-      progress
-    });
-  };
-  storageManager.ondone = () => {
-    postToClient({ type: "download-done", videoId: data.videoId });
-  };
-  storageManager.onerror = error => {
-    postToClient({
-      type: "download-error",
-      videoId: data.videoId,
-      message: error.message
-    });
-  };
-
-  downloadManager.attachFlushHandler((fileMeta, fileChunk, isDone) => {
-    void storageManager.storeChunk(fileMeta, fileChunk, isDone);
-  });
-
-  const finished = downloadManager
-    .run()
-    .catch((error: unknown) => {
-      // A cancelled download resolves cleanly, so reaching here is a real
-      // failure. Suppress it once cancel has taken this entry over.
-      if (
-        activeDownloads.get(data.videoId)?.downloadManager !== downloadManager
-      )
-        return;
-      const message =
-        error instanceof Error ? error.message : "Unknown download error.";
-      postToClient({ type: "download-error", videoId: data.videoId, message });
-    })
-    // Any chunk writes dispatched before the failure are still in flight —
-    // wait for them so a `cancel-video` purge triggered right after (e.g. a
-    // redownload) can't race one landing after the purge and resurrecting a
-    // stale chunk/fileMeta row, which would collide with the fresh
-    // download's writes on the unique video-chunk index.
-    .then(() => storageManager.settled())
-    .finally(() => {
-      // Leave the entry in place if a newer download has already replaced it.
-      if (
-        activeDownloads.get(data.videoId)?.downloadManager === downloadManager
-      )
+  // Only a download-video message remains.
+  event.waitUntil(
+    (async () => {
+      // A retry (or auto re-enqueue) can arrive while a previous manager for
+      // this video is still running — e.g. its socket stalled on a network
+      // change instead of erroring promptly, or it's still unwinding after a
+      // failure. Two managers writing the same IDB rows corrupt each other's
+      // byte accounting and can leave a truncated file marked complete, so
+      // tear the old one down before starting a new one. Unlike `cancel-video`
+      // this keeps the partial bytes on disk so the new download resumes from
+      // them. Removing the entry first makes the old manager's own cleanup a
+      // no-op (its guards see it's been replaced), so no spurious error fires.
+      const existing = activeDownloads.get(data.videoId);
+      if (existing) {
         activeDownloads.delete(data.videoId);
-    });
+        existing.storageManager.cancel();
+        existing.downloadManager.cancel();
+        await existing.finished;
+        await existing.storageManager.settled();
+      }
 
-  activeDownloads.set(data.videoId, {
-    downloadManager,
-    storageManager,
-    finished
-  });
-  event.waitUntil(finished);
+      const downloadManager = new DownloadManager(data.videoId, data.url);
+      const storageManager = new StorageManager(data.videoId);
+
+      storageManager.onprogress = progress => {
+        postToClient({
+          type: "download-progress",
+          videoId: data.videoId,
+          progress
+        });
+      };
+      storageManager.ondone = () => {
+        postToClient({ type: "download-done", videoId: data.videoId });
+      };
+      storageManager.onerror = error => {
+        postToClient({
+          type: "download-error",
+          videoId: data.videoId,
+          message: error.message
+        });
+      };
+
+      downloadManager.attachFlushHandler((fileMeta, fileChunk, isDone) => {
+        void storageManager.storeChunk(fileMeta, fileChunk, isDone);
+      });
+
+      const finished = downloadManager
+        .run()
+        .catch((error: unknown) => {
+          // A cancelled download resolves cleanly, so reaching here is a real
+          // failure. Suppress it once cancel has taken this entry over.
+          if (
+            activeDownloads.get(data.videoId)?.downloadManager !==
+            downloadManager
+          )
+            return;
+          const message =
+            error instanceof Error ? error.message : "Unknown download error.";
+          postToClient({
+            type: "download-error",
+            videoId: data.videoId,
+            message
+          });
+        })
+        // Any chunk writes dispatched before the failure are still in flight —
+        // wait for them so a `cancel-video` purge triggered right after (e.g. a
+        // redownload) can't race one landing after the purge and resurrecting a
+        // stale chunk/fileMeta row, which would collide with the fresh
+        // download's writes on the unique video-chunk index.
+        .then(() => storageManager.settled())
+        .finally(() => {
+          // Leave the entry in place if a newer download has already replaced it.
+          if (
+            activeDownloads.get(data.videoId)?.downloadManager ===
+            downloadManager
+          )
+            activeDownloads.delete(data.videoId);
+        });
+
+      activeDownloads.set(data.videoId, {
+        downloadManager,
+        storageManager,
+        finished
+      });
+      await finished;
+    })()
+  );
 });
