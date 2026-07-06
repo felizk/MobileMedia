@@ -28,6 +28,8 @@ export interface DownloadedVideo {
   videoId: string;
   /** The stream URL the bytes were fetched from. */
   url: string;
+  /** Bytes actually written to offline storage for this file. */
+  bytesDownloaded: number;
 }
 
 /** Returns every video that has been fully downloaded for offline playback. */
@@ -50,12 +52,17 @@ export async function getDownloadedVideos(): Promise<DownloadedVideo[]> {
       const entries = request.result as {
         videoId: string;
         url: string;
+        bytesDownloaded: number;
         done?: boolean;
       }[];
       resolve(
         entries
           .filter(entry => entry.done)
-          .map(entry => ({ videoId: entry.videoId, url: entry.url }))
+          .map(entry => ({
+            videoId: entry.videoId,
+            url: entry.url,
+            bytesDownloaded: entry.bytesDownloaded
+          }))
       );
     };
     request.onerror = () => resolve([]);

@@ -97,12 +97,83 @@
     >
       This browser doesn't expose storage information.
     </div>
+
+    <q-card flat bordered class="q-mt-md">
+      <q-card-section class="row items-center no-wrap">
+        <div class="col">
+          <div class="text-subtitle1">Broken downloads</div>
+          <div class="text-caption text-grey">
+            Checks each downloaded video against the server — catches ones that
+            got marked complete despite ending early.
+          </div>
+        </div>
+        <q-btn
+          flat
+          no-caps
+          color="primary"
+          label="Check now"
+          :loading="checking"
+          :disable="downloads.downloadedIds.size === 0"
+          @click="checkForBroken"
+        />
+      </q-card-section>
+
+      <q-card-section v-if="brokenDownloads != null">
+        <div v-if="brokenDownloads.length === 0" class="text-grey text-body2">
+          All downloaded videos check out.
+        </div>
+
+        <q-list v-else bordered separator>
+          <q-item v-for="item in brokenDownloads" :key="item.videoId">
+            <q-item-section>
+              <q-item-label>{{ fileName(item.videoId) }}</q-item-label>
+              <q-item-label caption class="ellipsis">{{
+                directoryName(item.videoId)
+              }}</q-item-label>
+              <q-item-label caption class="text-negative">
+                {{ formatBytes(item.bytesStored) }} of
+                {{ formatBytes(item.bytesExpected) }} saved
+              </q-item-label>
+            </q-item-section>
+
+            <q-item-section side>
+              <div class="row items-center q-gutter-xs">
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  icon="download"
+                  label="Redownload"
+                  color="primary"
+                  :loading="redownloadingIds.has(item.videoId)"
+                  @click="redownloadBroken(item)"
+                />
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  icon="delete"
+                  label="Delete"
+                  color="negative"
+                  :disable="redownloadingIds.has(item.videoId)"
+                  @click="deleteBroken(item)"
+                />
+              </div>
+            </q-item-section>
+          </q-item>
+        </q-list>
+      </q-card-section>
+    </q-card>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useDownloadsStore } from "@/stores/downloads";
+import {
+  type BrokenDownload,
+  findBrokenDownloads
+} from "@/services/offline-video-verify";
 import { formatBytes } from "@/utils/format-bytes";
 
 const downloads = useDownloadsStore();
@@ -110,6 +181,10 @@ const downloads = useDownloadsStore();
 const requesting = ref(false);
 const requestDenied = ref(false);
 const refreshing = ref(false);
+
+const checking = ref(false);
+const brokenDownloads = ref<BrokenDownload[] | null>(null);
+const redownloadingIds = ref(new Set<string>());
 
 const persisted = computed(() => downloads.storagePersisted);
 
@@ -180,4 +255,41 @@ async function refresh() {
 }
 
 onMounted(refresh);
+
+function fileName(path: string): string {
+  return path.split("/").at(-1) ?? path;
+}
+
+function directoryName(path: string): string {
+  return path.split("/").slice(0, -1).join("/") || "/";
+}
+
+async function checkForBroken() {
+  checking.value = true;
+  try {
+    brokenDownloads.value = await findBrokenDownloads();
+  } finally {
+    checking.value = false;
+  }
+}
+
+function removeBroken(videoId: string) {
+  brokenDownloads.value =
+    brokenDownloads.value?.filter(item => item.videoId !== videoId) ?? null;
+}
+
+function deleteBroken(item: BrokenDownload) {
+  downloads.deleteDownload(item.videoId);
+  removeBroken(item.videoId);
+}
+
+async function redownloadBroken(item: BrokenDownload) {
+  redownloadingIds.value.add(item.videoId);
+  try {
+    await downloads.redownload(item.videoId, item.url, fileName(item.videoId));
+    removeBroken(item.videoId);
+  } finally {
+    redownloadingIds.value.delete(item.videoId);
+  }
+}
 </script>

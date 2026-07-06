@@ -70,6 +70,33 @@ export async function requestVideoCancel(videoId: string): Promise<void> {
   registration.active?.postMessage({ type: "cancel-video", videoId });
 }
 
+/**
+ * Same as `requestVideoCancel`, but resolves only once the service worker
+ * confirms the purge finished. A redownload started right after this is
+ * guaranteed not to read stale fileMeta left over by the purged one.
+ */
+export async function requestVideoCancelAndWait(
+  videoId: string
+): Promise<void> {
+  const registration = await navigator.serviceWorker.ready;
+
+  await new Promise<void>((resolve, reject) => {
+    const listener = (event: MessageEvent<OfflineVideoMessage>) => {
+      const message = event.data;
+      if (message.videoId !== videoId) return;
+      if (message.type === "cancel-done") {
+        navigator.serviceWorker.removeEventListener("message", listener);
+        resolve();
+      } else if (message.type === "cancel-error") {
+        navigator.serviceWorker.removeEventListener("message", listener);
+        reject(new Error(message.message));
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", listener);
+    registration.active?.postMessage({ type: "cancel-video", videoId });
+  });
+}
+
 /** Subscribes to download progress/done/error events from the service worker. Returns an unsubscribe function. */
 export function onDownloadMessage(
   handler: (message: OfflineVideoMessage) => void

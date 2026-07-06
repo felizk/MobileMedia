@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import {
   onDownloadMessage,
   requestVideoCancel,
+  requestVideoCancelAndWait,
   requestVideoDelete,
   requestVideoDownload,
   type OfflineVideoMessage
@@ -214,6 +215,19 @@ export const useDownloadsStore = defineStore("downloads", () => {
     pump();
   }
 
+  /**
+   * Purges a broken download's data and re-queues a clean download for it.
+   * Waits for the purge to be confirmed before re-queueing so the fresh
+   * download can't read stale fileMeta left over by the corrupted one.
+   */
+  async function redownload(videoId: string, url: string, name: string) {
+    downloadedIds.value.delete(videoId);
+    items.value.delete(videoId);
+    persistQueue();
+    await requestVideoCancelAndWait(videoId);
+    enqueue(videoId, url, name);
+  }
+
   /** Re-queues a failed download so it resumes from its stored bytes. */
   function retry(videoId: string) {
     const item = items.value.get(videoId);
@@ -361,6 +375,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
     enqueue,
     deleteDownload,
     cancelDownload,
+    redownload,
     retry,
     clearFinished,
     refreshDownloadedIds,
