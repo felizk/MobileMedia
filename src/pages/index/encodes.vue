@@ -95,6 +95,27 @@
             >
               <q-tooltip>Requeue</q-tooltip>
             </q-btn>
+            <template v-if="job.status === 'Completed'">
+              <q-btn
+                v-if="downloads.isDownloaded(job.sourcePath)"
+                flat
+                no-caps
+                dense
+                icon="play_circle"
+                color="positive"
+                label="Watch"
+                :to="toWatchPath(job.sourcePath)"
+              >
+                <q-tooltip>Downloaded — watch offline</q-tooltip>
+              </q-btn>
+              <DownloadControl
+                v-else
+                :video-id="job.sourcePath"
+                :url="getStreamUrl(job.sourcePath)"
+                :name="fileName(job.sourcePath)"
+                can-download
+              />
+            </template>
           </div>
         </q-item-section>
       </q-item>
@@ -109,9 +130,13 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { EncodeJob, EncodeJobStatus } from "@/services/encode-api";
+import { getStreamUrl, toWatchPath } from "@/services/media-api";
+import { useDownloadsStore } from "@/stores/downloads";
 import { useEncodesStore } from "@/stores/encodes";
+import DownloadControl from "@/components/DownloadControl.vue";
 
 const encodes = useEncodesStore();
+const downloads = useDownloadsStore();
 
 const clearing = ref(false);
 const cancelling = ref(new Set<string>());

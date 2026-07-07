@@ -113,42 +113,7 @@
             />
 
             <!-- Download state -->
-            <template v-if="downloadItemOf(file)?.status === 'downloading'">
-              <q-circular-progress
-                :value="(downloadItemOf(file)?.progress ?? 0) * 100"
-                :indeterminate="downloadItemOf(file)?.progress == null"
-                show-value
-                size="32px"
-                color="primary"
-                track-color="grey-4"
-              >
-                <span class="text-caption">{{
-                  Math.round((downloadItemOf(file)?.progress ?? 0) * 100)
-                }}</span>
-              </q-circular-progress>
-            </template>
-            <q-icon
-              v-else-if="downloadItemOf(file)?.status === 'queued'"
-              name="downloading"
-              color="grey"
-              size="24px"
-            >
-              <q-tooltip>Waiting in download queue</q-tooltip>
-            </q-icon>
-            <q-btn
-              v-else-if="downloadItemOf(file)?.status === 'error'"
-              dense
-              round
-              flat
-              icon="sync_problem"
-              color="negative"
-              @click.stop.prevent="downloads.retry(file.path)"
-            >
-              <q-tooltip
-                >{{ downloadItemOf(file)?.error }} — tap to retry</q-tooltip
-              >
-            </q-btn>
-            <template v-else-if="isDownloaded(file)">
+            <template v-if="isDownloaded(file)">
               <q-icon name="offline_pin" color="positive" size="24px">
                 <q-tooltip>Downloaded for offline</q-tooltip>
               </q-icon>
@@ -164,18 +129,13 @@
                 <q-tooltip>Delete from device</q-tooltip>
               </q-btn>
             </template>
-            <q-btn
-              v-else-if="statusOf(file) === 'Encoded' && !isOffline"
-              dense
-              round
-              flat
-              icon="download"
-              color="primary"
-              aria-label="Download for offline"
-              @click.stop.prevent="downloadFile(file)"
-            >
-              <q-tooltip>Download for offline</q-tooltip>
-            </q-btn>
+            <DownloadControl
+              v-else
+              :video-id="file.path"
+              :url="getStreamUrl(file.path)"
+              :name="file.name"
+              :can-download="statusOf(file) === 'Encoded' && !isOffline"
+            />
           </div>
         </q-item-section>
       </q-item>
@@ -217,6 +177,7 @@ import {
 import { useDownloadsStore, type DownloadItem } from "@/stores/downloads";
 import { useEncodesStore } from "@/stores/encodes";
 import { formatBytes } from "@/utils/format-bytes";
+import DownloadControl from "./DownloadControl.vue";
 
 const props = defineProps<{ path: string }>();
 
@@ -363,10 +324,6 @@ async function encodeAll() {
   } finally {
     encodingAll.value = false;
   }
-}
-
-function downloadFile(file: MediaFileEntry) {
-  downloads.enqueue(file.path, getStreamUrl(file.path), file.name);
 }
 
 function deleteFile(file: MediaFileEntry) {
