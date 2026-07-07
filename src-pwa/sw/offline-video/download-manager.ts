@@ -103,6 +103,15 @@ export default class DownloadManager {
     // A full (non-partial) response means the server ignored our Range
     // header, so any previously downloaded bytes need to be discarded.
     if (!contentRange) {
+      // A 206 with no readable Content-Range is a spec violation — almost
+      // always the server missing `Access-Control-Expose-Headers:
+      // Content-Range`, which would otherwise silently reset resume progress.
+      if (response.status === 206) {
+        throw new Error(
+          "Got a 206 but no Content-Range — server is likely missing " +
+            "Access-Control-Expose-Headers: Content-Range."
+        );
+      }
       fileMeta.bytesDownloaded = 0;
     }
     fileMeta.mimeType =
