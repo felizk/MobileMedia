@@ -48,12 +48,18 @@
       You're offline — showing only videos downloaded to this device.
     </q-banner>
 
-    <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>
+    <!-- Error/loading only take over the whole view when there's nothing on
+         device to show; downloaded content in this folder always renders. -->
+    <q-banner
+      v-if="error && isEmpty"
+      class="bg-negative text-white q-mb-md"
+      rounded
+    >
       {{ error }}
     </q-banner>
 
     <q-linear-progress
-      v-else-if="loading"
+      v-else-if="loading && isEmpty"
       indeterminate
       color="primary"
       class="q-mb-md"
@@ -172,6 +178,7 @@ import {
   toBrowsePath,
   toWatchPath,
   type EncodeStatus,
+  type MediaDirectoryEntry,
   type MediaFileEntry
 } from "@/services/media-api";
 import { useDownloadsStore, type DownloadItem } from "@/stores/downloads";
@@ -217,6 +224,7 @@ const breadcrumbs = computed(() => {
  */
 function statusOf(file: MediaFileEntry): EncodeStatus {
   const job = encodes.jobBySourcePath.get(file.path);
+
   if (job) {
     if (job.status === "Completed") return "Encoded";
     if (job.status === "Queued" || job.status === "Running") return "Encoding";
@@ -249,23 +257,80 @@ const encodedOnlyRequest = computed(
   () => !isOffline.value && downloads.downloadedOnly
 );
 
-const visibleDirectories = computed(() => {
-  const dirs = result.value?.directories ?? [];
-  if (!isOffline.value) return dirs;
-  // Only folders that (transitively) contain a downloaded video.
-  return dirs.filter(dir => {
-    const prefix = `${dir.path}/`;
-    for (const videoId of downloads.downloadedIds) {
-      if (videoId.startsWith(prefix)) return true;
+// Path prefix shared by everything directly inside this folder. Empty at
+// the root, so `videoId.startsWith(prefix)` is always true there.
+const childPrefix = computed(() => (props.path ? `${props.path}/` : ""));
+
+/**
+ * Downloaded content living (transitively) under the current folder, derived
+ * straight from the download registry rather than the server listing. This is
+ * what lets a folder holding downloads — and the downloaded files themselves —
+ * show even when this folder's listing was never cached from the server.
+ */
+const downloadedHere = computed(() => {
+  const prefix = childPrefix.value;
+  const dirs = new Map<string, MediaDirectoryEntry>();
+  const fileIds = new Set<string>();
+  for (const videoId of downloads.downloadedIds) {
+    if (prefix && !videoId.startsWith(prefix)) continue;
+    const rest = videoId.slice(prefix.length);
+    const slash = rest.indexOf("/");
+    if (slash === -1) {
+      fileIds.add(videoId);
+    } else {
+      const name = rest.slice(0, slash);
+      const path = `${prefix}${name}`;
+      dirs.set(path, { name, path });
     }
-    return false;
-  });
+  }
+  return { dirs, fileIds };
+});
+
+/** Builds a file entry for a downloaded video the server didn't list. */
+function synthesizeDownloadedFile(videoId: string): MediaFileEntry {
+  const name = videoId.slice(videoId.lastIndexOf("/") + 1);
+  const dot = name.lastIndexOf(".");
+  return {
+    name,
+    path: videoId,
+    sizeBytes: downloads.bytesFor(videoId) ?? 0,
+    extension: dot === -1 ? "" : name.slice(dot),
+    encodeStatus: "Encoded"
+  };
+}
+
+const visibleDirectories = computed(() => {
+  const downloadedDirs = downloadedHere.value.dirs;
+  const merged = new Map<string, MediaDirectoryEntry>();
+  for (const dir of result.value?.directories ?? []) {
+    // Offline, only keep folders that (transitively) hold a download.
+    if (isOffline.value && !downloadedDirs.has(dir.path)) continue;
+    merged.set(dir.path, dir);
+  }
+  // Always surface folders with downloads, even if the server listing is
+  // missing (uncached) or filtered them out.
+  for (const [path, dir] of downloadedDirs) {
+    if (!merged.has(path)) merged.set(path, dir);
+  }
+  return [...merged.values()];
 });
 
 const visibleFiles = computed(() => {
-  const files = result.value?.files ?? [];
-  if (!isOffline.value) return files;
-  return files.filter(file => isDownloaded(file));
+  const fileIds = downloadedHere.value.fileIds;
+  const merged = new Map<string, MediaFileEntry>();
+  for (const file of result.value?.files ?? []) {
+    // Offline shows only downloaded files; online shows everything the
+    // server listed (already filtered server-side when downloadedOnly).
+    if (isOffline.value && !isDownloaded(file)) continue;
+    merged.set(file.path, file);
+  }
+  // Always include downloaded files, even when the server listing for this
+  // folder is missing or dropped them.
+  for (const videoId of fileIds) {
+    if (!merged.has(videoId))
+      merged.set(videoId, synthesizeDownloadedFile(videoId));
+  }
+  return [...merged.values()];
 });
 
 const encodableCount = computed(
@@ -286,7 +351,8 @@ function encodingLabel(file: MediaFileEntry): string {
 }
 
 function fileCaption(file: MediaFileEntry): string {
-  const parts = [formatBytes(file.sizeBytes)];
+  const parts: string[] = [];
+  if (file.sizeBytes > 0) parts.push(formatBytes(file.sizeBytes));
   if (statusOf(file) === "NotEncoded") parts.push("Not encoded");
   const download = downloadItemOf(file);
   if (download?.status === "queued") parts.push("Download queued");

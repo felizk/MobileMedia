@@ -45,6 +45,8 @@ interface PersistedItem {
 export const useDownloadsStore = defineStore("downloads", () => {
   const items = ref(new Map<string, DownloadItem>());
   const downloadedIds = ref(new Set<string>());
+  /** videoId → bytes on device, for downloads scanned from IndexedDB. */
+  const downloadedBytes = ref(new Map<string, number>());
   let initialized = false;
 
   /**
@@ -147,6 +149,11 @@ export const useDownloadsStore = defineStore("downloads", () => {
     return downloadedIds.value.has(videoId);
   }
 
+  /** Bytes stored on device for a download, or null if unknown. */
+  function bytesFor(videoId: string): number | null {
+    return downloadedBytes.value.get(videoId) ?? null;
+  }
+
   function itemFor(videoId: string): DownloadItem | undefined {
     return items.value.get(videoId);
   }
@@ -199,6 +206,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
   function deleteDownload(videoId: string) {
     items.value.delete(videoId);
     downloadedIds.value.delete(videoId);
+    downloadedBytes.value.delete(videoId);
     persistQueue();
     void requestVideoDelete(videoId);
   }
@@ -287,6 +295,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
         break;
       case "delete-done":
         downloadedIds.value.delete(message.videoId);
+        downloadedBytes.value.delete(message.videoId);
         void refreshStorageEstimate();
         break;
       case "delete-error":
@@ -295,6 +304,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
         break;
       case "cancel-done":
         downloadedIds.value.delete(message.videoId);
+        downloadedBytes.value.delete(message.videoId);
         void refreshStorageEstimate();
         break;
       case "cancel-error":
@@ -307,6 +317,9 @@ export const useDownloadsStore = defineStore("downloads", () => {
   async function refreshDownloadedIds() {
     const videos = await getDownloadedVideos();
     downloadedIds.value = new Set(videos.map(video => video.videoId));
+    downloadedBytes.value = new Map(
+      videos.map(video => [video.videoId, video.bytesDownloaded])
+    );
   }
 
   function restoreQueue() {
@@ -355,6 +368,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
   return {
     items,
     downloadedIds,
+    downloadedBytes,
     downloadedOnly,
     toggleDownloadedOnly,
     downloadingCount,
@@ -371,6 +385,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
     refreshPersisted,
     requestPersistence,
     isDownloaded,
+    bytesFor,
     itemFor,
     enqueue,
     deleteDownload,
