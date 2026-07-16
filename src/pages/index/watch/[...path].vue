@@ -131,6 +131,24 @@
         <div v-else class="text-grey"
           >Connect to the internet to download this video.</div
         >
+
+        <q-space />
+
+        <q-badge v-if="isEncodeQueued" color="orange" outline>{{
+          encodeQueuedLabel
+        }}</q-badge>
+        <q-btn
+          v-else
+          outline
+          no-caps
+          color="primary"
+          icon="bolt"
+          label="Queue for re-encode"
+          :loading="requeuingEncode"
+          :disable="isOffline"
+          @click="queueReencode"
+        />
+        <div v-if="encodeError" class="text-negative">{{ encodeError }}</div>
       </div>
     </div>
   </q-page>
@@ -142,12 +160,14 @@ import { useRoute } from "vue-router";
 import MediaPlayer from "@/components/MediaPlayer.vue";
 import { getStreamUrl, toBrowsePath, toWatchPath } from "@/services/media-api";
 import { useDownloadsStore } from "@/stores/downloads";
+import { useEncodesStore } from "@/stores/encodes";
 
 const route = useRoute("//watch/[...path]");
 const path = computed(() => route.params.path);
 const streamUrl = computed(() => getStreamUrl(path.value));
 
 const downloads = useDownloadsStore();
+const encodes = useEncodesStore();
 
 const segments = computed(() => path.value.split("/").filter(Boolean));
 const fileName = computed(() => segments.value.at(-1) ?? "");
@@ -205,6 +225,39 @@ const canPlay = computed(() => isDownloaded.value || !isOffline.value);
 
 function startDownload() {
   downloads.enqueue(path.value, streamUrl.value, fileName.value);
+}
+
+/**
+ * Only a Queued/Running job for this path blocks re-queuing — a
+ * Completed/Failed/Canceled job (or none at all) leaves it free.
+ */
+const isEncodeQueued = computed(() => {
+  const job = encodes.jobBySourcePath.get(path.value);
+  return job?.status === "Queued" || job?.status === "Running";
+});
+const encodeQueuedLabel = computed(() => {
+  const job = encodes.jobBySourcePath.get(path.value);
+  if (job?.status === "Running" && job.progress != null) {
+    return `Encoding ${Math.round(job.progress * 100)}%`;
+  }
+  return job?.status === "Running" ? "Encoding" : "Encode queued";
+});
+
+const requeuingEncode = ref(false);
+const encodeError = ref("");
+
+async function queueReencode() {
+  if (isEncodeQueued.value) return;
+  requeuingEncode.value = true;
+  encodeError.value = "";
+  try {
+    await encodes.enqueueEncode(path.value, { autoDownload: false });
+  } catch (e) {
+    encodeError.value =
+      e instanceof Error ? e.message : "Failed to queue the re-encode.";
+  } finally {
+    requeuingEncode.value = false;
+  }
 }
 
 function deleteDownload() {
