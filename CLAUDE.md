@@ -49,4 +49,6 @@ The custom service worker (`custom-sw.ts`, `workboxMode: "InjectManifest"`) does
 
 ## Deploy
 
-`Dockerfile` runs `quasar build -m pwa` and serves the static output via nginx (`docker/nginx.conf`); `.github/workflows/docker-publish.yml` publishes to GHCR.
+`Dockerfile` runs `quasar build -m pwa` and serves the static output via nginx (`docker/nginx.conf`); `.github/workflows/publish.yml` publishes to GHCR (`ghcr.io/felizk/mobilemedia`: `latest` on `main`, semver tags on `v*` tags).
+
+The app is installed and updated on Unraid by **Unraid App Manager (UAM)** from the template `unraid/mobilemedia.xml`. Follow `UAM.md` for anything touching `unraid/`, the `Dockerfile` or the publish workflow.

@@ -23,4 +23,10 @@ COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist/pwa /usr/share/nginx/html
 
 EXPOSE 80
+
+# UAM rolls an update back if the new container turns unhealthy.
+# 127.0.0.1, not localhost: nginx only listens on IPv4.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s \
+    CMD wget -qO- http://127.0.0.1/healthz || exit 1
+
 CMD ["nginx", "-g", "daemon off;"]

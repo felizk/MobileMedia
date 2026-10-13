@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>mobilemedia</Name>
+  <Repository>ghcr.io/felizk/mobilemedia:latest</Repository>
+  <Registry>https://github.com/felizk/MobileMedia/pkgs/container/mobilemedia</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Shell>sh</Shell>
+  <Support>https://github.com/felizk/MobileMedia/issues</Support>
+  <Project>https://github.com/felizk/MobileMedia</Project>
+  <Overview>PWA client for the MediaTryk server: browse, encode, stream and download media for offline playback.</Overview>
+  <Category>MediaApp:Video</Category>
+  <WebUI>http://[IP]:[PORT:80]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/felizk/MobileMedia/main/public/icons/icon-256x256.png</Icon>
+  <ExtraParams></ExtraParams>
+  <PostArgs></PostArgs>
+  <Config Name="Web UI" Target="80" Default="8080" Mode="tcp" Description="HTTP port (UAM may remap it)" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+</Container>
